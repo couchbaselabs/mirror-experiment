@@ -10,7 +10,7 @@ jobs:
     cloneDepth: 1
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageWithKanikoStep
-    name: Build Hass
+    name: Push Loopus
     buildContext: .
     output: !RegistryOutput
       destinations: onedev.onedev/loopus:latest

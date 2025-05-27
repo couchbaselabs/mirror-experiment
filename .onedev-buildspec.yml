@@ -1,0 +1,26 @@
+version: 39
+jobs:
+- name: Build Docker Files
+  steps:
+  - !CheckoutStep
+    name: Checkout
+    cloneCredential: !DefaultCredential {}
+    withLfs: true
+    withSubmodules: true
+    cloneDepth: 1
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  - !BuildImageWithKanikoStep
+    name: Build Hass
+    buildContext: .
+    output: !RegistryOutput
+      destinations: onedev.onedev/loopus:latest
+    moreOptions: --insecure-registry onedev.onedev
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  triggers:
+  - !BranchUpdateTrigger
+    branches: main
+    paths: apps/**
+  retryCondition: never
+  maxRetries: 3
+  retryDelay: 30
+  timeout: 14400

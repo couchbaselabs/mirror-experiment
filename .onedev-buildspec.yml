@@ -1,6 +1,7 @@
 version: 39
 jobs:
 - name: Build Docker Files
+  jobExecutor: k8s
   steps:
   - !CheckoutStep
     name: Checkout

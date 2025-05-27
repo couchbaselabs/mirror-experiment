@@ -9,6 +9,14 @@ jobs:
     withSubmodules: true
     cloneDepth: 1
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  - !CommandStep
+    name: LS
+    runInContainer: false
+    interpreter: !DefaultInterpreter
+      commands: |
+        ls -lah
+    useTTY: true
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageWithKanikoStep
     name: Push Loopus
     output: !RegistryOutput

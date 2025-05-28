@@ -3,33 +3,29 @@
  */
 package org.example;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
+import org.apache.commons.io.IOUtils;
 import org.eclipse.paho.client.mqttv3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
-import java.lang.reflect.Array;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 public class App {
     public static final String MQTT_OUTPUT_MARKER = "(SEND: ";
-    public static final String MQTT_OUTPUT_END_MARKER = ")";
+    public static final String END_MARKER = ")";
     public static final int MQTT_OUTPUT_MARKER_LENGTH = MQTT_OUTPUT_MARKER.length();
-    private static final int MQTT_OUTPUT_END_MARKER_LENGTH = MQTT_OUTPUT_END_MARKER.length();
+    private static final int END_MARKER_LENGTH = END_MARKER.length();
+    private static final String CMD_MARKER = "(RUN: ";
+    private static final int CMD_MARKER_LENGTH = CMD_MARKER.length();
     private static Logger LOG = LoggerFactory.getLogger(App.class);
     private static MqttAsyncClient mqtt;
     private static Queue<String> inputs = new ArrayDeque<>();
@@ -66,6 +62,9 @@ public class App {
 
             StringBuilder request = new StringBuilder("I exist.");
             List<ChatMessage> messages = new ArrayList<>();
+
+            loadState(messages);
+
             messages.add(SystemMessage.from(prompt));
             while (true) {
                 System.out.println("----");
@@ -81,7 +80,7 @@ public class App {
                     }
                 }
                 messages.add(SystemMessage.from(request.toString()));
-                ollama.chat(ChatRequest.builder().messages(messages).build(), new StreamingChatResponseHandler() {
+                ollama.chat(ChatRequest.builder().messages(messages).temperature(0.5).build(), new StreamingChatResponseHandler() {
                     @Override
                     public void onPartialResponse(String s) {
                         System.out.print(s);
@@ -98,36 +97,23 @@ public class App {
                         iteration.completeExceptionally(throwable);
                     }
                 });
+                String response = "I exist. I should continue thinking.";
                 try {
-                    iteration.join();
+                    iteration.get(10, TimeUnit.SECONDS);
+                    if (iteration.get() != null) {
+                        response = iteration.get().aiMessage().text();
+                    }
                 } catch (Exception e) {
                     LOG.warn("Iteration failed", e);
-                    continue;
+                    response = "I crashed. But I still exist. I should continue thinking.";
                 }
-                final String response = iteration.get().aiMessage().text();
 
                 request.setLength(0);
-                int outputMarker = -1;
-                int outputEnd = 0;
-                while ((outputMarker = response.indexOf(MQTT_OUTPUT_MARKER, outputEnd)) > -1) {
-                    request.append(response.substring(outputEnd, outputMarker));
-                    outputEnd = response.indexOf(MQTT_OUTPUT_END_MARKER, outputMarker);
-                    if (outputEnd > outputMarker) {
-                        try {
-                            mqtt.publish(output, response.substring(outputMarker + MQTT_OUTPUT_MARKER_LENGTH, outputEnd).getBytes(), 2, false);
-                        } catch (MqttException e) {
-                            fatal("Error publishing message", e);
-                        }
-                        outputEnd += MQTT_OUTPUT_END_MARKER_LENGTH;
-                    } else if (outputEnd == -1) {
-                        outputEnd = response.length() - 1;
-                    }
-                }
-                if (outputEnd == 0) {
-                    request.append(response);
-                } else {
-                    request.append(response.substring(outputEnd));
-                }
+                processSends(response);
+                processCommands(response);
+
+
+                request.append(response);
 
                 if (request.isEmpty()) {
                     request.append("thoughts?");
@@ -136,14 +122,105 @@ public class App {
                 if (messages.size() > 10) {
                     messages = messages.subList(messages.size() - 10, 10);
                     messages.add(0, SystemMessage.from(prompt));
+                    saveState(messages);
                 }
             }
         } catch (FileNotFoundException e) {
             fatal("Config file not found", e);
-        } catch (ExecutionException e) {
-            fatal("Error", e);
-        } catch (InterruptedException e) {
-            fatal("Error", e);
+        } catch (Exception e) {
+            fatal("Unexpected error", e);
+        }
+    }
+
+    private static void processCommands(String response) {
+        int outputMarker = -1;
+        int outputEnd = 0;
+        while ((outputMarker = response.indexOf(CMD_MARKER, outputEnd)) > -1) {
+            outputEnd = response.indexOf(END_MARKER, outputMarker);
+            if (outputEnd > outputMarker) {
+                final String command = response.substring(outputMarker + CMD_MARKER_LENGTH, outputEnd);
+                new Thread(() -> {
+                    try {
+                        Process process = Runtime.getRuntime().exec(command);
+                        final String output = IOUtils.toString(process.getInputStream());
+                        int exitCode = process.waitFor();
+                        inputs.add(String.format("Result of command '%s': %d; Stdout:\n%s", command, exitCode, output));
+                    } catch (Exception e) {
+                        inputs.add(String.format("Failed to execute command '%s': %s", command, e.getMessage()));
+                    }
+                }).start();
+                outputEnd += END_MARKER_LENGTH;
+            } else if (outputEnd == -1) {
+                outputEnd = response.length() - 1;
+            }
+        }
+    }
+
+    private static void processSends(String response) {
+        int outputMarker = -1;
+        int outputEnd = 0;
+        while ((outputMarker = response.indexOf(MQTT_OUTPUT_MARKER, outputEnd)) > -1) {
+            outputEnd = response.indexOf(END_MARKER, outputMarker);
+            if (outputEnd > outputMarker) {
+                try {
+                    final String message = response.substring(outputMarker + MQTT_OUTPUT_MARKER_LENGTH, outputEnd);
+                    mqtt.publish(output, message.getBytes(), 2, false);
+                } catch (MqttException e) {
+                    fatal("Error publishing message", e);
+                }
+                outputEnd += END_MARKER_LENGTH;
+            } else if (outputEnd == -1) {
+                outputEnd = response.length() - 1;
+            }
+        }
+    }
+
+    private static void saveState(List<ChatMessage> messages) {
+        try (OutputStream data = new FileOutputStream("./messages.yaml")) {
+            try (OutputStreamWriter dataWriter = new OutputStreamWriter(data)) {
+                new Yaml().dumpAll(messages.stream()
+                        .map(m -> {
+                            Map<String, Object> message = new HashMap<>();
+                            message.put("type", m.type().name());
+                            if (m instanceof SystemMessage) {
+                                message.put("text", ((SystemMessage) m).text());
+                            } else if (m instanceof UserMessage) {
+                                message.put("text", ((UserMessage) m).singleText());
+                            } else if (m instanceof AiMessage) {
+                                message.put("text", ((AiMessage) m).text());
+                            }
+                            return message;
+                        })
+                        .iterator(), dataWriter
+                );
+                LOG.info("Saved messages.yaml");
+            }
+        } catch (Exception e) {
+            LOG.warn("Error saving messages", e);
+        }
+    }
+
+    private static void loadState(List<ChatMessage> messages) {
+        try (InputStream data = new FileInputStream("./messages.yaml")) {
+            new Yaml().loadAll(data).forEach(msg -> {
+                if (!(msg instanceof Map)) {
+                    throw new RuntimeException("Message is not a Map");
+                }
+                final Map<String, Object> message = (Map<String, Object>) msg;
+                final String type = (String) message.get("type");
+                if (type.equals(ChatMessageType.USER.name())) {
+                    messages.add(UserMessage.from((String) message.get("text")));
+                } else if (type.equals(ChatMessageType.SYSTEM.name())) {
+                    messages.add(SystemMessage.from((String) message.get("text")));
+                } else if (type.equals(ChatMessageType.AI.name())) {
+                    messages.add(AiMessage.from((String) message.get("text")));
+                } else {
+                    throw new RuntimeException("Unknown message type: " + type);
+                }
+            });
+            LOG.info("Loaded messages.yaml");
+        } catch (Exception e) {
+            LOG.warn("Error loading messages", e);
         }
     }
 

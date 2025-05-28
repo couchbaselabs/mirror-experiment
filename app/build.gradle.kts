@@ -9,6 +9,7 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+    id("com.gradleup.shadow") version "9.0.0-beta13"
 }
 
 repositories {
@@ -24,6 +25,7 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.4")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     implementation("dev.langchain4j:langchain4j-ollama:1.0.1-beta6")
+    implementation("org.apache.commons:commons-io:1.3.2")
 }
 
 testing {
@@ -47,3 +49,10 @@ application {
     // Define the main class for the application.
     mainClass = "org.example.App"
 }
+
+tasks.jar {
+    manifest {
+        attributes["Main-Class"] = "org.example.App"
+    }
+}
+

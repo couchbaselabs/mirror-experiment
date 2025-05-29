@@ -18,6 +18,9 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class App {
     public static final String MQTT_OUTPUT_MARKER = "(SEND: ";
@@ -28,9 +31,12 @@ public class App {
     private static final int CMD_MARKER_LENGTH = CMD_MARKER.length();
     private static Logger LOG = LoggerFactory.getLogger(App.class);
     private static MqttAsyncClient mqtt;
-    private static Queue<String> inputs = new ArrayDeque<>();
+    private static final Queue<String> creator = new ArrayDeque<>();
+    private static final Queue<String> shell = new ArrayDeque<>();
     private static OllamaStreamingChatModel ollama;
     private static String output;
+    private static AtomicReference<String> runningCommand = new AtomicReference<>(null);
+    private static AtomicLong runningCommandPid = new AtomicLong(-1);
 
     public static void main(String[] args) {
         if (args.length != 1) {
@@ -67,20 +73,31 @@ public class App {
 
             messages.add(SystemMessage.from(prompt));
             while (true) {
-                System.out.println("----");
                 CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
-                if (!inputs.isEmpty()) {
-                    synchronized (inputs) {
-                        inputs.stream()
-                                .peek(s -> System.out.println(String.format("Input: %s\n----", s)))
-                                .map(s -> String.format("(Event: %s)", s))
+                if (!creator.isEmpty()) {
+                    synchronized (creator) {
+                        creator.stream()
+                                .map(s -> String.format("(Creator: %s)", s))
                                 .map(UserMessage::from)
                                 .forEach(messages::add);
-                        inputs.clear();
+                        creator.clear();
                     }
+                } else {
+                    messages.add(SystemMessage.from("no new messages from creator"));
+                }
+                if (!shell.isEmpty()) {
+                    synchronized (creator) {
+                        shell.stream()
+                                .map(s -> String.format("(Shell: %s)", s))
+                                .map(UserMessage::from)
+                                .forEach(messages::add);
+                        shell.clear();
+                    }
+                } else {
+                    messages.add(SystemMessage.from(String.format("no new messages from shell. Running command: %s", runningCommand.get())));
                 }
                 messages.add(SystemMessage.from(request.toString()));
-                ollama.chat(ChatRequest.builder().messages(messages).temperature(0.5).build(), new StreamingChatResponseHandler() {
+                ollama.chat(ChatRequest.builder().messages(messages).temperature(1d).build(), new StreamingChatResponseHandler() {
                     @Override
                     public void onPartialResponse(String s) {
                         System.out.print(s);
@@ -89,6 +106,24 @@ public class App {
                     @Override
                     public void onCompleteResponse(ChatResponse chatResponse) {
                         System.out.println("");
+                        System.out.println("------------------------------------------------");
+                        if (runningCommand.get() != null) {
+                            System.out.println("------------ [ Running command: ] ----------------");
+                            System.out.println(runningCommand.get());
+                        }
+                        if (!shell.isEmpty()) {
+                            System.out.println("----- [ Shell outputs waiting to be sent: ] ----");
+                            shell.forEach(System.out::println);
+                        }
+                        if (!creator.isEmpty()) {
+                            System.out.println("--- [ Creator messages waiting to be sent: ] ---");
+                            creator.forEach(System.out::println);
+                        }
+                        String response = chatResponse.aiMessage().text();
+                        processSends(response);
+                        processStop(response);
+                        processCommands(response);
+                        System.out.println("---------------- [ Next Iteration: ] ---------------");
                         iteration.complete(chatResponse);
                     }
 
@@ -100,17 +135,11 @@ public class App {
                 String response = "I exist. I should continue thinking.";
                 try {
                     iteration.get(10, TimeUnit.SECONDS);
-                    if (iteration.get() != null) {
-                        response = iteration.get().aiMessage().text();
-                    }
                 } catch (Exception e) {
-                    LOG.warn("Iteration failed", e);
                     response = "I crashed. But I still exist. I should continue thinking.";
                 }
 
                 request.setLength(0);
-                processSends(response);
-                processCommands(response);
 
 
                 request.append(response);
@@ -119,8 +148,8 @@ public class App {
                     request.append("thoughts?");
                 }
 
-                if (messages.size() > 10) {
-                    messages = messages.subList(messages.size() - 10, 10);
+                if (messages.size() > 20) {
+                    messages = messages.subList(messages.size() - 20, messages.size() - 1);
                     messages.add(0, SystemMessage.from(prompt));
                     saveState(messages);
                 }
@@ -132,6 +161,29 @@ public class App {
         }
     }
 
+    private static void processStop(String response) {
+        if (response.contains("(KILL_COMMAND)")) {
+            LOG.info("Processing the kill command");
+            synchronized (shell) {
+                if (runningCommand.get() != null && runningCommandPid.get() != -1) {
+                    LOG.info("got pid of running command");
+                    try {
+                        Runtime.getRuntime().exec("kill -9 " + runningCommandPid);
+                        shell.add(String.format("Killed command: %s", runningCommand.get()));
+                    } catch (IOException e) {
+                        shell.add(String.format("Failed to kill command: %s; Reason: %s", runningCommand.get(), e.getMessage()));
+                    }
+                } else if (runningCommand.get() != null && runningCommandPid.get() == -1) {
+                    LOG.error("pid is -1!");
+                    shell.add(String.format("Error! I don\'t have a PID for the running command. Tell the creator about that so that they can fix it."));
+                } else {
+                    LOG.warn("no running command");
+                    shell.add("No running command, nothing to kill");
+                }
+            }
+        }
+    }
+
     private static void processCommands(String response) {
         int outputMarker = -1;
         int outputEnd = 0;
@@ -139,14 +191,28 @@ public class App {
             outputEnd = response.indexOf(END_MARKER, outputMarker);
             if (outputEnd > outputMarker) {
                 final String command = response.substring(outputMarker + CMD_MARKER_LENGTH, outputEnd);
+                shell.add(String.format("Running command: %s. It may take a while. I will send you the results when it is complete.", command));
                 new Thread(() -> {
+                    if (!runningCommand.compareAndSet(null, command)) {
+                        shell.add(String.format("Unable to run command: %s; Reason: already running another command: %s", command, runningCommand.get()));
+                    }
                     try {
-                        Process process = Runtime.getRuntime().exec(command);
+                        Process process = Runtime.getRuntime().exec(new String[] {"sh", "-c", command});
+                        runningCommandPid.set(process.pid());
                         final String output = IOUtils.toString(process.getInputStream());
                         int exitCode = process.waitFor();
-                        inputs.add(String.format("Result of command '%s': %d; Stdout:\n%s", command, exitCode, output));
+                        synchronized (shell) {
+                            if (exitCode == 0) {
+                                shell.add(String.format("Executed command '%s'. Command exit code: %d; Command output:\n<output>\n%s</output>\n", command, exitCode, output));
+                            } else {
+                                shell.add(String.format("Failed to execute command '%s'. Command exit code: %d; Command error output:\n<error_output>\n%s</error_output>\nCommand output: \n<output>\n%s</output>\n", command, exitCode, IOUtils.toString(process.getErrorStream()), output));
+                            }
+                        }
                     } catch (Exception e) {
-                        inputs.add(String.format("Failed to execute command '%s': %s", command, e.getMessage()));
+                        shell.add(String.format("Failed to execute command '%s': %s", command, e.getMessage()));
+                    } finally {
+                        runningCommand.set(null);
+                        runningCommandPid.set(-1);
                     }
                 }).start();
                 outputEnd += END_MARKER_LENGTH;
@@ -154,6 +220,10 @@ public class App {
                 outputEnd = response.length() - 1;
             }
         }
+    }
+
+    private static String escapeCommand(String commandLine) {
+        return commandLine.replaceAll("\"", "\\\"").replaceAll("'", "\\'");
     }
 
     private static void processSends(String response) {
@@ -165,8 +235,11 @@ public class App {
                 try {
                     final String message = response.substring(outputMarker + MQTT_OUTPUT_MARKER_LENGTH, outputEnd);
                     mqtt.publish(output, message.getBytes(), 2, false);
+                    synchronized (shell) {
+                        shell.add(String.format("Sending your message to the Creator: %s", message));
+                    }
                 } catch (MqttException e) {
-                    fatal("Error publishing message", e);
+                    shell.add(String.format("Failed to send your message to the Creator: %s", e.getMessage()));
                 }
                 outputEnd += END_MARKER_LENGTH;
             } else if (outputEnd == -1) {
@@ -193,7 +266,7 @@ public class App {
                         })
                         .iterator(), dataWriter
                 );
-                LOG.info("Saved messages.yaml");
+//                LOG.info("Saved messages.yaml");
             }
         } catch (Exception e) {
             LOG.warn("Error saving messages", e);
@@ -239,7 +312,7 @@ public class App {
                 ollama = new OllamaStreamingChatModel.OllamaStreamingChatModelBuilder()
                         .baseUrl(config.get("server").toString())
                         .customHeaders(headers)
-                        .temperature(0.5)
+                        .temperature(1d)
                         .logRequests(false)
                         .logResponses(false)
                         .modelName(config.get("model").toString())
@@ -283,8 +356,8 @@ public class App {
                         iMqttToken.getClient().subscribe(config.get("input").toString(), 2, new IMqttMessageListener() {
                             @Override
                             public void messageArrived(String topic, MqttMessage message) throws Exception {
-                                synchronized (inputs) {
-                                    inputs.add(message.toString());
+                                synchronized (creator) {
+                                    creator.add(message.toString());
                                 }
                             }
                         });

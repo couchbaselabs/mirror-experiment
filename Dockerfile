@@ -13,11 +13,10 @@ RUN apt-get install -y $JAVA_VERSION
 # Setup JAVA_HOME
 ENV JAVA_HOME=/usr/lib/jvm/java-19-openjdk-amd64
 
+RUN apt install -y man-db
 
-COPY app loopus_src
 COPY app/build/libs/app-all.jar loopus.jar
 COPY config.yaml .
 
-RUN apt install -y man-db
 
 CMD ["java", "-jar", "loopus.jar", "config.yaml"]

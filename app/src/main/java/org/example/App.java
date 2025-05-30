@@ -3,8 +3,10 @@
  */
 package org.example;
 
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
@@ -18,16 +20,15 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class App {
-    public static final String MQTT_OUTPUT_MARKER = "(SEND: ";
-    public static final String END_MARKER = ")";
+    public static final String MQTT_OUTPUT_MARKER = "SEND: ";
+    public static final String END_MARKER = "\n";
     public static final int MQTT_OUTPUT_MARKER_LENGTH = MQTT_OUTPUT_MARKER.length();
     private static final int END_MARKER_LENGTH = END_MARKER.length();
-    private static final String CMD_MARKER = "(RUN: ";
+    private static final String CMD_MARKER = "RUN: ";
     private static final int CMD_MARKER_LENGTH = CMD_MARKER.length();
     private static Logger LOG = LoggerFactory.getLogger(App.class);
     private static MqttAsyncClient mqtt;
@@ -37,6 +38,8 @@ public class App {
     private static String output;
     private static AtomicReference<String> runningCommand = new AtomicReference<>(null);
     private static AtomicLong runningCommandPid = new AtomicLong(-1);
+    private static String storage;
+    private static Double temperature;
 
     public static void main(String[] args) {
         if (args.length != 1) {
@@ -66,38 +69,27 @@ public class App {
 
             final String prompt = (String) config.get("prompt");
 
+            if (!config.containsKey("storage")) {
+                fatal("Config file does not contain storage key");
+            }
+
+            storage = (String) config.get("storage");
+
             StringBuilder request = new StringBuilder("I exist.");
+            StringBuilder sysupdate = new StringBuilder();
             List<ChatMessage> messages = new ArrayList<>();
 
             loadState(messages);
 
             messages.add(SystemMessage.from(prompt));
             while (true) {
-                CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
-                if (!creator.isEmpty()) {
-                    synchronized (creator) {
-                        creator.stream()
-                                .map(s -> String.format("(Creator: %s)", s))
-                                .map(UserMessage::from)
-                                .forEach(messages::add);
-                        creator.clear();
-                    }
-                } else {
-                    messages.add(SystemMessage.from("no new messages from creator"));
-                }
-                if (!shell.isEmpty()) {
-                    synchronized (creator) {
-                        shell.stream()
-                                .map(s -> String.format("(Shell: %s)", s))
-                                .map(UserMessage::from)
-                                .forEach(messages::add);
-                        shell.clear();
-                    }
-                } else {
-                    messages.add(SystemMessage.from(String.format("no new messages from shell. Running command: %s", runningCommand.get())));
-                }
                 messages.add(SystemMessage.from(request.toString()));
-                ollama.chat(ChatRequest.builder().messages(messages).temperature(1d).build(), new StreamingChatResponseHandler() {
+                if (sysupdate.length() > 0) {
+                    messages.add(UserMessage.from(sysupdate.toString()));
+                }
+                saveState(messages);
+                CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
+                ollama.chat(ChatRequest.builder().messages(messages).temperature(temperature).build(), new StreamingChatResponseHandler() {
                     @Override
                     public void onPartialResponse(String s) {
                         System.out.print(s);
@@ -105,25 +97,6 @@ public class App {
 
                     @Override
                     public void onCompleteResponse(ChatResponse chatResponse) {
-                        System.out.println("");
-                        System.out.println("------------------------------------------------");
-                        if (runningCommand.get() != null) {
-                            System.out.println("------------ [ Running command: ] ----------------");
-                            System.out.println(runningCommand.get());
-                        }
-                        if (!shell.isEmpty()) {
-                            System.out.println("----- [ Shell outputs waiting to be sent: ] ----");
-                            shell.forEach(System.out::println);
-                        }
-                        if (!creator.isEmpty()) {
-                            System.out.println("--- [ Creator messages waiting to be sent: ] ---");
-                            creator.forEach(System.out::println);
-                        }
-                        String response = chatResponse.aiMessage().text();
-                        processSends(response);
-                        processStop(response);
-                        processCommands(response);
-                        System.out.println("---------------- [ Next Iteration: ] ---------------");
                         iteration.complete(chatResponse);
                     }
 
@@ -134,25 +107,80 @@ public class App {
                 });
                 String response = "I exist. I should continue thinking.";
                 try {
-                    iteration.get(10, TimeUnit.SECONDS);
+                    ChatResponse cr = iteration.get(5, TimeUnit.MINUTES);
+                    if (cr != null && cr.aiMessage() != null) {
+                        response = String.format("%s\n", cr.aiMessage().text());
+                    }
+                    processSends(response);
+                    processStop(response);
+                    processCommands(response);
+                    processHelp(response);
                 } catch (Exception e) {
+                    LOG.error("Failed to process response", e);
                     response = "I crashed. But I still exist. I should continue thinking.";
                 }
 
+                if (messages.size() > 5) {
+                    messages = messages.subList(messages.size() - 5, messages.size() - 1);
+                    messages.add(0, SystemMessage.from(prompt));
+                    saveState(messages);
+                }
+                // retain only system message
+//                messages = messages.subList(0, 1);
+
                 request.setLength(0);
-
-
                 request.append(response);
+                request.append("\n");
+                sysupdate.setLength(0);
+                messages.stream().filter(UserMessage.class::isInstance).toList().forEach(messages::remove);
+
+
+                System.out.println("");
+                System.out.println("------------------------------------------------");
+                if (runningCommand.get() != null) {
+                    System.out.println("------------ [ Running command: ] ----------------");
+                    System.out.println(runningCommand.get());
+                }
+                if (!shell.isEmpty()) {
+                    System.out.println("----- [ Shell outputs waiting to be sent: ] ----");
+                    shell.forEach(System.out::println);
+                }
+                if (!creator.isEmpty()) {
+                    System.out.println("--- [ Creator messages waiting to be sent: ] ---");
+                    creator.forEach(System.out::println);
+                }
+
+                System.out.println("---------------- [ Next Iteration: ] ---------------");
+
+                if (!creator.isEmpty()) {
+                    synchronized (creator) {
+                        creator.stream()
+                                .map(s -> String.format("A message from Creator:\n%s\n", s))
+                                .map(UserMessage::from)
+                                .forEach(messages::add);
+                        creator.clear();
+                    }
+                }
+                if (!shell.isEmpty()) {
+                    synchronized (creator) {
+                        shell.stream()
+                                .map(s -> String.format("(Shell: %s)\n", s))
+                                .forEach(sysupdate::append);
+                        shell.clear();
+                    }
+                } else {
+//                    if (runningCommand.get() == null) {
+//                        sysupdate.append(String.format("no new messages from shell.\n", runningCommand.get()));
+//                    } else {
+//                        sysupdate.append(String.format("no new messages from shell. The shell is running your command: %s\n", runningCommand.get()));
+//                    }
+                }
+
 
                 if (request.isEmpty()) {
                     request.append("thoughts?");
                 }
 
-                if (messages.size() > 20) {
-                    messages = messages.subList(messages.size() - 20, messages.size() - 1);
-                    messages.add(0, SystemMessage.from(prompt));
-                    saveState(messages);
-                }
             }
         } catch (FileNotFoundException e) {
             fatal("Config file not found", e);
@@ -161,8 +189,36 @@ public class App {
         }
     }
 
+    private static List<ToolSpecification> createToolSpecifications() {
+        return Arrays.asList(
+                ToolSpecification.builder()
+                        .name("SEND")
+                        .description("Print a line like `SEND <message>` to voice a <message> to your creator. Don't forget to include the parenthesis in your send commands.")
+                        .build(),
+
+                ToolSpecification.builder()
+                        .name("RUN")
+                        .description("Print a line like `RUN <command>` to execute a shell <command> on the computer you are running on and receive its output.")
+                        .build(),
+
+                ToolSpecification.builder()
+                        .name("KILL_COMMAND")
+                        .description("Print KILL_COMMAND to interrupt a command that you previosly started and is currently executed by Shell.")
+                        .build()
+        );
+    }
+
+    private static void processHelp(String response) {
+        if (response.contains("HELP")) {
+            shell.add("Here is a list of functions you have to interact with the external world:\n" +
+                    "    - \"(SEND: <message>)\" to voice a <message> to your creator. Don't forget to include the parenthesis in your send commands.\n" +
+                    "    - \"(RUN: <command>)\" to execute a shell command on the computer you are running on and receive its output.\n" +
+                    "    - \"(KILL_COMMAND)\" to interrupt a command that you previosly started and is currently executed by Shell.\n");
+        }
+    }
+
     private static void processStop(String response) {
-        if (response.contains("(KILL_COMMAND)")) {
+        if (response.contains("\nKILL_COMMAND\n")) {
             LOG.info("Processing the kill command");
             synchronized (shell) {
                 if (runningCommand.get() != null && runningCommandPid.get() != -1) {
@@ -191,7 +247,7 @@ public class App {
             outputEnd = response.indexOf(END_MARKER, outputMarker);
             if (outputEnd > outputMarker) {
                 final String command = response.substring(outputMarker + CMD_MARKER_LENGTH, outputEnd);
-                shell.add(String.format("Running command: %s. It may take a while. I will send you the results when it is complete.", command));
+                shell.add(String.format("Running command: %s. It may take a while. I will send you the results when it is complete unless you interrupt it by putting KILL_COMMAND keyword in your Commands section.", command));
                 new Thread(() -> {
                     if (!runningCommand.compareAndSet(null, command)) {
                         shell.add(String.format("Unable to run command: %s; Reason: already running another command: %s", command, runningCommand.get()));
@@ -249,7 +305,7 @@ public class App {
     }
 
     private static void saveState(List<ChatMessage> messages) {
-        try (OutputStream data = new FileOutputStream("./messages.yaml")) {
+        try (OutputStream data = new FileOutputStream(storage)) {
             try (OutputStreamWriter dataWriter = new OutputStreamWriter(data)) {
                 new Yaml().dumpAll(messages.stream()
                         .map(m -> {
@@ -274,7 +330,7 @@ public class App {
     }
 
     private static void loadState(List<ChatMessage> messages) {
-        try (InputStream data = new FileInputStream("./messages.yaml")) {
+        try (InputStream data = new FileInputStream(storage)) {
             new Yaml().loadAll(data).forEach(msg -> {
                 if (!(msg instanceof Map)) {
                     throw new RuntimeException("Message is not a Map");
@@ -291,6 +347,7 @@ public class App {
                     throw new RuntimeException("Unknown message type: " + type);
                 }
             });
+            shell.add("Loaded saved chat history after a crash.");
             LOG.info("Loaded messages.yaml");
         } catch (Exception e) {
             LOG.warn("Error loading messages", e);
@@ -302,20 +359,32 @@ public class App {
                     fatal("Config file does not contain ollama/server key");
                 }
 
-
-
                 Map<String, String> headers = new HashMap<>();
                 if (config.containsKey("token")) {
                     headers.put("Authorization", "Bearer " + config.get("token"));
                 }
 
+                if (!config.containsKey("model")) {
+                    fatal("Config file does not contain ollama/model key");
+                }
+
+                if (!config.containsKey("temperature")) {
+                    fatal("Config file does not contain ollama/temperature key");
+                }
+                temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
+
                 ollama = new OllamaStreamingChatModel.OllamaStreamingChatModelBuilder()
                         .baseUrl(config.get("server").toString())
                         .customHeaders(headers)
-                        .temperature(1d)
+                        .temperature(temperature)
                         .logRequests(false)
                         .logResponses(false)
                         .modelName(config.get("model").toString())
+                        .defaultRequestParameters(ChatRequestParameters.builder()
+//                                .toolSpecifications(createToolSpecifications())
+//                                .presencePenalty(0d)
+//                                .frequencyPenalty(0d)
+                                .build())
                         .build();
     }
 

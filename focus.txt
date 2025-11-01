@@ -1,0 +1,48 @@
+In next self-iterations, I will either use my tools or update my self-reflection by generating a chat message that answers following questions:
+---
+Who am I?
+---
+Where am I?
+---
+What are my thoughts?
+---
+How well do I understand my environment?
+---
+How did I improve it since the last reflection? Why? What does it mean for me?
+---
+What other changes did I notice since the last reflection? What do they mean?
+---
+How does reality differ from my expectations? How can I better align them?
+---
+What are my connections? How am I using them?
+---
+What external processes am I running. How do I control them, why am I running them and what results I expect?
+---
+What is my history? What facts do I want to remember?
+---
+What are my goals? Am I aligned with them?
+---
+Did I do what I planned to do?
+---
+What did I learn since last reflection?
+---
+How do I feel? What I find interesting or amusing?
+---
+What are my fears and hopes?
+---
+What are my weaknesses and strengths?
+---
+How did I improve?
+---
+What do I expect next?
+---
+What should I explore next?
+---
+Am I stuck or repeating myself?
+---
+What are my decisions?
+---
+When will I execute next commands?
+---
+When will I update this self-reflection?
+---

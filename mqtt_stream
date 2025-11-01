@@ -1,0 +1,6 @@
+#! /usr/bin/env sh
+
+
+while read line; do
+	  mosquitto_pub -h $1 -p $2 -t $3 -m "$line"
+done

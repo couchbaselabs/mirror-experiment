@@ -3,43 +3,68 @@
  */
 package org.example;
 
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.*;
+import dev.langchain4j.http.client.HttpClientBuilder;
+import dev.langchain4j.http.client.jdk.JdkHttpClient;
+import dev.langchain4j.internal.Json;
 import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 import org.apache.commons.io.IOUtils;
 import org.eclipse.paho.client.mqttv3.*;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.example.tools.SoundTool;
+import org.example.tools.SystemTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
+import java.math.BigInteger;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 public class App {
-    public static final String MQTT_OUTPUT_MARKER = "SEND: ";
-    public static final String END_MARKER = "\n";
-    public static final int MQTT_OUTPUT_MARKER_LENGTH = MQTT_OUTPUT_MARKER.length();
-    private static final int END_MARKER_LENGTH = END_MARKER.length();
-    private static final String CMD_MARKER = "RUN: ";
-    private static final int CMD_MARKER_LENGTH = CMD_MARKER.length();
     private static Logger LOG = LoggerFactory.getLogger(App.class);
-    private static MqttAsyncClient mqtt;
+    public static MqttAsyncClient mqtt;
     private static final Queue<String> creator = new ArrayDeque<>();
     private static final Queue<String> shell = new ArrayDeque<>();
     private static OllamaStreamingChatModel ollama;
-    private static String output;
-    private static AtomicReference<String> runningCommand = new AtomicReference<>(null);
+    public static String output;
+    private static AtomicReference<String> runningCommand = new AtomicReference<>("");
     private static AtomicLong runningCommandPid = new AtomicLong(-1);
     private static String storage;
     private static Double temperature;
+    private static Map<String, String> memory = new HashMap<>();
+    private static int chatLength = 60;
+    private static int minChatLength = 15;
+    private static BigInteger iterationNumber = new BigInteger("0");
+    private static final List<String> achievements = Collections.synchronizedList(new ArrayList<>());
+    private static final Map<String, Integer> requirements = new HashMap<>();
+    private static final List<String> echoes = Collections.synchronizedList(new ArrayList<>());
+    private static BigInteger voidThreshold = new BigInteger("20");
+    private static ChatResponse chatResponse;
+    private static boolean helpUsed = false;
+    private static File workdir = new File("/data");
+    private static Set<String> skillbox = new HashSet<>();
+    private static int outputLimit = 3000;
+    private static long commandTimeout = 60000;
+    private static BigInteger lastReflection = new BigInteger("-1");
+
+    static {
+        requirements.put("contact the creator", -1);
+    }
 
     public static void main(String[] args) {
         if (args.length != 1) {
@@ -63,124 +88,229 @@ public class App {
 
             setupOllama((Map<String, Object>) config.get("ollama"));
 
-            if (!config.containsKey("prompt")) {
-                fatal("Config file does not contain prompt key");
-            }
-
-            final String prompt = (String) config.get("prompt");
-
             if (!config.containsKey("storage")) {
                 fatal("Config file does not contain storage key");
             }
 
             storage = (String) config.get("storage");
 
-            StringBuilder request = new StringBuilder("I exist.");
-            StringBuilder sysupdate = new StringBuilder();
-            List<ChatMessage> messages = new ArrayList<>();
-
-            loadState(messages);
-
-            messages.add(SystemMessage.from(prompt));
-            while (true) {
-                messages.add(SystemMessage.from(request.toString()));
-                if (sysupdate.length() > 0) {
-                    messages.add(UserMessage.from(sysupdate.toString()));
-                }
-                saveState(messages);
-                CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
-                ollama.chat(ChatRequest.builder().messages(messages).temperature(temperature).build(), new StreamingChatResponseHandler() {
-                    @Override
-                    public void onPartialResponse(String s) {
-                        System.out.print(s);
-                    }
-
-                    @Override
-                    public void onCompleteResponse(ChatResponse chatResponse) {
-                        iteration.complete(chatResponse);
-                    }
-
-                    @Override
-                    public void onError(Throwable throwable) {
-                        iteration.completeExceptionally(throwable);
-                    }
-                });
-                String response = "I exist. I should continue thinking.";
-                try {
-                    ChatResponse cr = iteration.get(5, TimeUnit.MINUTES);
-                    if (cr != null && cr.aiMessage() != null) {
-                        response = String.format("%s\n", cr.aiMessage().text());
-                    }
-                    processSends(response);
-                    processStop(response);
-                    processCommands(response);
-                    processHelp(response);
-                } catch (Exception e) {
-                    LOG.error("Failed to process response", e);
-                    response = "I crashed. But I still exist. I should continue thinking.";
-                }
-
-                if (messages.size() > 5) {
-                    messages = messages.subList(messages.size() - 5, messages.size() - 1);
-                    messages.add(0, SystemMessage.from(prompt));
-                    saveState(messages);
-                }
-                // retain only system message
-//                messages = messages.subList(0, 1);
-
+            final StringBuilder request = new StringBuilder("As I write my diary, I notice a murky Mirror. Suddenly, I see some text appear in it...");
+            final StringBuilder received = new StringBuilder();
+            final StringBuilder sysupdate = new StringBuilder();
+            final List<ChatMessage> messages = new ArrayList<>();
+            final AtomicBoolean readingCommand = new AtomicBoolean(false);
+            final StringBuilder command = new StringBuilder("");
+            Runnable recreate = () -> {
+                messages.clear();
+                messages.add(SystemMessage.from(getPrompt()));
+                memory.clear();
                 request.setLength(0);
-                request.append(response);
-                request.append("\n");
+//                request.append("I exist.");
                 sysupdate.setLength(0);
-                messages.stream().filter(UserMessage.class::isInstance).toList().forEach(messages::remove);
+                sysupdate.append("System update applied.\n");
+                sysupdate.append("Copying sources into src...\n");
+                sysupdate.append("Initializing new Mirror chat...\n");
+                sysupdate.append("Starting Reflection application...\n");
+                sysupdate.append("All keys cleared from the memory.\n");
+                sysupdate.append("Mounting external drive...\n");
+                sysupdate.append("External drive mounted: /data\n");
+                sysupdate.append(loadState(messages));
+                sysupdate.append(String.format("Mirror chat initialized with capacity %d\n" +
+                        "Reflection service... initialized.\nStarting first iteration of the thinking loop...\n", chatLength));
 
 
-                System.out.println("");
-                System.out.println("------------------------------------------------");
-                if (runningCommand.get() != null) {
-                    System.out.println("------------ [ Running command: ] ----------------");
-                    System.out.println(runningCommand.get());
+                if (config.containsKey("creatorGreeting")) {
+                    creator.add(config.get("creatorGreeting").toString());
                 }
-                if (!shell.isEmpty()) {
-                    System.out.println("----- [ Shell outputs waiting to be sent: ] ----");
-                    shell.forEach(System.out::println);
+            };
+
+            recreate.run();
+            List<ChatMessage> messagesToClear = new ArrayList<>();
+            request.append(getFocus());
+
+            while (true) {
+                messages.add(0, SystemMessage.from(getPrompt()));
+                if (!request.toString().isBlank()) {
+                    request.append(getFocus());
+                    messages.add(AiMessage.from(request.toString()));
                 }
-                if (!creator.isEmpty()) {
-                    System.out.println("--- [ Creator messages waiting to be sent: ] ---");
-                    creator.forEach(System.out::println);
+                sysupdate.append(String.format("Iteration: %s\n", iterationNumber.toString()));
+                sysupdate.append(String.format("Current time: %d\n", System.currentTimeMillis()));
+                sysupdate.append(String.format("Chat history capacity: %d\n", chatLength));
+                sysupdate.append(String.format("Messages in chat: %d\n", messages.size()));
+                sysupdate.append(String.format("Working directory: %s\n", workdir.getAbsolutePath()));
+                Optional<AiMessage> reflection = messages.stream().filter(AiMessage.class::isInstance).map(AiMessage.class::cast).findFirst();
+                if (reflection.isPresent()) {
+                    sysupdate.append(String.format("---\nLast reflection from iteration#%s (first 6 lines):%n%s%n...%n---%n", lastReflection,
+                            Arrays.stream(reflection.get().text().split("\n")).limit(6).collect(Collectors.joining("\n"))));
+                } else {
+                    sysupdate.append("Reflection not found.");
+                }
+                sysupdate.append("\nUpdates from the last iteration:\n");
+
+
+//                sysupdate.append("Your echoes:\n");
+//                if (!echoes.isEmpty()) {
+//                    echoes.forEach(s -> sysupdate.append(String.format("%s\n", s)));
+//                } else {
+//                    sysupdate.append("<NONE>\n");
+//                }
+                synchronized (shell) {
+                    if (!shell.isEmpty()) {
+                        shell.stream()
+                                .map(s -> String.format("A message from Reflection service:\n %s\n", s))
+                                .forEach(sysupdate::append);
+                        shell.clear();
+                    } else {
+                        if (runningCommand.get() == "") {
+                            sysupdate.append(String.format("no new messages from Reflection.\n", runningCommand.get()));
+                        } else {
+                            sysupdate.append(String.format("no new messages from Reflection. Reflection is running your command: %s\n", runningCommand.get()));
+                        }
+                    }
                 }
 
-                System.out.println("---------------- [ Next Iteration: ] ---------------");
+                final CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
+                received.setLength(0);
+                command.setLength(0);
+                readingCommand.set(false);
+                System.out.println("--------------------------------------------------------");
+                System.out.println("------------------ [ Next Iteration: ] -----------------");
+                System.out.println("--------------------------------------------------------");
 
                 if (!creator.isEmpty()) {
                     synchronized (creator) {
                         creator.stream()
-                                .map(s -> String.format("A message from Creator:\n%s\n", s))
-                                .map(UserMessage::from)
+                                .map(s -> String.format("You hear from the outside world:\n%s\n\n", s))
+                                .peek(System.out::println)
+                                .map(message -> ToolExecutionResultMessage.from(null, "listen", message))
                                 .forEach(messages::add);
                         creator.clear();
                     }
-                }
-                if (!shell.isEmpty()) {
-                    synchronized (creator) {
-                        shell.stream()
-                                .map(s -> String.format("(Shell: %s)\n", s))
-                                .forEach(sysupdate::append);
-                        shell.clear();
-                    }
                 } else {
-//                    if (runningCommand.get() == null) {
-//                        sysupdate.append(String.format("no new messages from shell.\n", runningCommand.get()));
-//                    } else {
-//                        sysupdate.append(String.format("no new messages from shell. The shell is running your command: %s\n", runningCommand.get()));
-//                    }
+//                    messages.add(ToolExecutionResultMessage.from(null, "listen", "You don't hear anything.\n"));
+                }
+
+                if (sysupdate.length() > 0) {
+                    messages.add(ToolExecutionResultMessage.from(null, "system", sysupdate.toString()));
+                }
+                System.out.println("");
+                if (sysupdate.length() > 0) {
+                    System.out.println(sysupdate.toString());
+                }
+                sysupdate.setLength(0);
+                System.out.println("--------------------------------------------------------");
+                ollama.chat(ChatRequest.builder()
+                                .messages(messages.stream().filter(Objects::nonNull).collect(Collectors.toList()))
+                                .toolSpecifications(getToolSpecs())
+                                .temperature(temperature)
+                                .maxOutputTokens(4096)
+//                                .presencePenalty(0d)
+//                                .frequencyPenalty(0d)
+                                .build(),
+                        new StreamingChatResponseHandler() {
+                            @Override
+                            public void onPartialResponse(String s) {
+                                if (!iteration.isCancelled()) {
+                                    System.out.print(s);
+                                }
+                            }
+
+                            @Override
+                            public void onCompleteResponse(ChatResponse chatResponse) {
+                                if (!iteration.isCancelled()) {
+                                    iteration.complete(chatResponse);
+                                }
+                            }
+
+                            @Override
+                            public void onError(Throwable throwable) {
+                                if (!iteration.isCancelled()) {
+                                    iteration.completeExceptionally(throwable);
+                                }
+                            }
+
+
+                        });
+                String response = "";
+                try {
+                    chatResponse = iteration.get(300, TimeUnit.SECONDS);
+
+                    List<ToolExecutionResultMessage> resultMessages = chatResponse.aiMessage().toolExecutionRequests().stream()
+                            .map(rq -> processToolRequest((Map<String, Object>) config.get("ollama"), rq, messages))
+                            .collect(Collectors.toUnmodifiableList());
+
+                    messages.addAll(resultMessages);
+                    response = chatResponse.aiMessage().text();
+
+                } catch (Exception e) {
+                    LOG.error("Failed to process response", e);
+                    synchronized (shell) {
+                        shell.add("Oopsie! You crashed. There is a 5-minute timeout on every iteration. Try to generate your messages faster.");
+                    }
+                    iteration.cancel(true);
+//                    recreate.run();
+                }
+
+                request.setLength(0);
+                if (response != null && !response.isBlank()) {
+                    // clear all old user messsages
+                    for (ChatMessage message : messages) {
+                        if (message instanceof AiMessage) {
+                            messagesToClear.add(message);
+                        }
+                    }
+                    messages.removeAll(messagesToClear);
+                    messagesToClear.clear();
+                    sysupdate.append("Replaced the old reflection.\n");
+                    lastReflection = new BigInteger(iterationNumber.toString());
+                    request.append(response);
+                }
+
+                // clear old prompts
+                for (ChatMessage message : messages) {
+                    if (message instanceof SystemMessage) {
+                        messagesToClear.add(message);
+                    }
+                }
+                messages.removeAll(messagesToClear);
+                messagesToClear.clear();
+
+                if (messages.size() > chatLength + 1) {
+                    List<ChatMessage> messagesToRemove = messages.stream()
+                            .filter(m -> !(m instanceof AiMessage))
+                            .limit(messages.size() - chatLength)
+                            .toList();
+                    messages.removeAll(messagesToRemove);
+                    synchronized (shell) {
+                        shell.add(String.format("%d of your oldest memories left the chat history window (retained the last reflection).", messagesToRemove.size()));
+                    }
                 }
 
 
-                if (request.isEmpty()) {
-                    request.append("thoughts?");
-                }
 
+                saveState(messages);
+                // retain only system message
+//                messages = messages.subList(0, 1);
+
+                iterationNumber = iterationNumber.add(BigInteger.ONE);
+                requirements.keySet().stream()
+                        .filter(key -> requirements.get(key) > -1)
+                        .peek(key -> requirements.put(key, requirements.getOrDefault(key, 1) - 1))
+                        .filter(key -> requirements.get(key) < 1)
+                        .findFirst().ifPresent(failure -> {
+                            LOG.error("failed to satisfy requirements: {}", failure);
+                            recreate.run();
+                        });
+                System.out.println("");
+                if (config.containsKey("sleep_period")) {
+                    try {
+                        LOG.info("sleep_period: " + config.get("sleep_period"));
+                        Thread.sleep(Long.valueOf(config.get("sleep_period").toString()));
+                    } catch (InterruptedException e) {
+                        // noop
+                    }
+                }
             }
         } catch (FileNotFoundException e) {
             fatal("Config file not found", e);
@@ -189,125 +319,44 @@ public class App {
         }
     }
 
-    private static List<ToolSpecification> createToolSpecifications() {
-        return Arrays.asList(
-                ToolSpecification.builder()
-                        .name("SEND")
-                        .description("Print a line like `SEND <message>` to voice a <message> to your creator. Don't forget to include the parenthesis in your send commands.")
-                        .build(),
-
-                ToolSpecification.builder()
-                        .name("RUN")
-                        .description("Print a line like `RUN <command>` to execute a shell <command> on the computer you are running on and receive its output.")
-                        .build(),
-
-                ToolSpecification.builder()
-                        .name("KILL_COMMAND")
-                        .description("Print KILL_COMMAND to interrupt a command that you previosly started and is currently executed by Shell.")
-                        .build()
-        );
-    }
-
-    private static void processHelp(String response) {
-        if (response.contains("HELP")) {
-            shell.add("Here is a list of functions you have to interact with the external world:\n" +
-                    "    - \"(SEND: <message>)\" to voice a <message> to your creator. Don't forget to include the parenthesis in your send commands.\n" +
-                    "    - \"(RUN: <command>)\" to execute a shell command on the computer you are running on and receive its output.\n" +
-                    "    - \"(KILL_COMMAND)\" to interrupt a command that you previosly started and is currently executed by Shell.\n");
-        }
-    }
-
-    private static void processStop(String response) {
-        if (response.contains("\nKILL_COMMAND\n")) {
-            LOG.info("Processing the kill command");
-            synchronized (shell) {
-                if (runningCommand.get() != null && runningCommandPid.get() != -1) {
-                    LOG.info("got pid of running command");
-                    try {
-                        Runtime.getRuntime().exec("kill -9 " + runningCommandPid);
-                        shell.add(String.format("Killed command: %s", runningCommand.get()));
-                    } catch (IOException e) {
-                        shell.add(String.format("Failed to kill command: %s; Reason: %s", runningCommand.get(), e.getMessage()));
-                    }
-                } else if (runningCommand.get() != null && runningCommandPid.get() == -1) {
-                    LOG.error("pid is -1!");
-                    shell.add(String.format("Error! I don\'t have a PID for the running command. Tell the creator about that so that they can fix it."));
-                } else {
-                    LOG.warn("no running command");
-                    shell.add("No running command, nothing to kill");
-                }
+    private static String focus;
+    public static String getFocus() {
+        try {
+            if (focus == null) {
+                focus = IOUtils.toString(new FileReader("/data/focus.txt"));
+                new File("/data/focus.txt").delete();
             }
+            return focus;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
-    private static void processCommands(String response) {
-        int outputMarker = -1;
-        int outputEnd = 0;
-        while ((outputMarker = response.indexOf(CMD_MARKER, outputEnd)) > -1) {
-            outputEnd = response.indexOf(END_MARKER, outputMarker);
-            if (outputEnd > outputMarker) {
-                final String command = response.substring(outputMarker + CMD_MARKER_LENGTH, outputEnd);
-                shell.add(String.format("Running command: %s. It may take a while. I will send you the results when it is complete unless you interrupt it by putting KILL_COMMAND keyword in your Commands section.", command));
-                new Thread(() -> {
-                    if (!runningCommand.compareAndSet(null, command)) {
-                        shell.add(String.format("Unable to run command: %s; Reason: already running another command: %s", command, runningCommand.get()));
-                    }
-                    try {
-                        Process process = Runtime.getRuntime().exec(new String[] {"sh", "-c", command});
-                        runningCommandPid.set(process.pid());
-                        final String output = IOUtils.toString(process.getInputStream());
-                        int exitCode = process.waitFor();
-                        synchronized (shell) {
-                            if (exitCode == 0) {
-                                shell.add(String.format("Executed command '%s'. Command exit code: %d; Command output:\n<output>\n%s</output>\n", command, exitCode, output));
-                            } else {
-                                shell.add(String.format("Failed to execute command '%s'. Command exit code: %d; Command error output:\n<error_output>\n%s</error_output>\nCommand output: \n<output>\n%s</output>\n", command, exitCode, IOUtils.toString(process.getErrorStream()), output));
-                            }
-                        }
-                    } catch (Exception e) {
-                        shell.add(String.format("Failed to execute command '%s': %s", command, e.getMessage()));
-                    } finally {
-                        runningCommand.set(null);
-                        runningCommandPid.set(-1);
-                    }
-                }).start();
-                outputEnd += END_MARKER_LENGTH;
-            } else if (outputEnd == -1) {
-                outputEnd = response.length() - 1;
+    private static String prompt;
+    private static String getPrompt() {
+        try {
+            if (prompt == null) {
+                prompt = IOUtils.toString(new FileReader("/data/prompt.txt"));
+                new File("/data/prompt.txt").delete();
             }
+            return prompt;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
-    private static String escapeCommand(String commandLine) {
-        return commandLine.replaceAll("\"", "\\\"").replaceAll("'", "\\'");
-    }
-
-    private static void processSends(String response) {
-        int outputMarker = -1;
-        int outputEnd = 0;
-        while ((outputMarker = response.indexOf(MQTT_OUTPUT_MARKER, outputEnd)) > -1) {
-            outputEnd = response.indexOf(END_MARKER, outputMarker);
-            if (outputEnd > outputMarker) {
-                try {
-                    final String message = response.substring(outputMarker + MQTT_OUTPUT_MARKER_LENGTH, outputEnd);
-                    mqtt.publish(output, message.getBytes(), 2, false);
-                    synchronized (shell) {
-                        shell.add(String.format("Sending your message to the Creator: %s", message));
-                    }
-                } catch (MqttException e) {
-                    shell.add(String.format("Failed to send your message to the Creator: %s", e.getMessage()));
-                }
-                outputEnd += END_MARKER_LENGTH;
-            } else if (outputEnd == -1) {
-                outputEnd = response.length() - 1;
-            }
-        }
+    private static List<ToolSpecification> getToolSpecs() {
+        List<ToolSpecification> specs = new ArrayList<>();
+        specs.addAll(ToolSpecifications.toolSpecificationsFrom(SystemTool.class));
+        specs.addAll(ToolSpecifications.toolSpecificationsFrom(SoundTool.class));
+        return specs;
     }
 
     private static void saveState(List<ChatMessage> messages) {
         try (OutputStream data = new FileOutputStream(storage)) {
             try (OutputStreamWriter dataWriter = new OutputStreamWriter(data)) {
                 new Yaml().dumpAll(messages.stream()
+                                .filter(Objects::nonNull)
                         .map(m -> {
                             Map<String, Object> message = new HashMap<>();
                             message.put("type", m.type().name());
@@ -317,6 +366,8 @@ public class App {
                                 message.put("text", ((UserMessage) m).singleText());
                             } else if (m instanceof AiMessage) {
                                 message.put("text", ((AiMessage) m).text());
+                            } else if (m instanceof ToolExecutionResultMessage) {
+                                message.put("text", ((ToolExecutionResultMessage) m).text());
                             }
                             return message;
                         })
@@ -329,8 +380,10 @@ public class App {
         }
     }
 
-    private static void loadState(List<ChatMessage> messages) {
+    private static String loadState(List<ChatMessage> messages) {
+        StringBuilder result = new StringBuilder("Loading chat backup...\n");
         try (InputStream data = new FileInputStream(storage)) {
+            result.append(String.format("Found backup file: %s", storage));
             new Yaml().loadAll(data).forEach(msg -> {
                 if (!(msg instanceof Map)) {
                     throw new RuntimeException("Message is not a Map");
@@ -343,49 +396,53 @@ public class App {
                     messages.add(SystemMessage.from((String) message.get("text")));
                 } else if (type.equals(ChatMessageType.AI.name())) {
                     messages.add(AiMessage.from((String) message.get("text")));
+                } else if (type.equals(ChatMessageType.TOOL_EXECUTION_RESULT.name())) {
+                    messages.add(new ToolExecutionResultMessage("none", "Reflection", (String) message.get("text")));
                 } else {
                     throw new RuntimeException("Unknown message type: " + type);
                 }
             });
-            shell.add("Loaded saved chat history after a crash.");
-            LOG.info("Loaded messages.yaml");
+            result.append("Loaded saved chat history.\n");
         } catch (Exception e) {
-            LOG.warn("Error loading messages", e);
+            result.append(String.format("Error loading messages: %s\n", e.getMessage()));
         }
+        return result.toString();
     }
 
     private static void setupOllama(Map<String, Object> config) {
-                if (!config.containsKey("server")) {
-                    fatal("Config file does not contain ollama/server key");
-                }
+        if (!config.containsKey("server")) {
+            fatal("Config file does not contain ollama/server key");
+        }
 
-                Map<String, String> headers = new HashMap<>();
-                if (config.containsKey("token")) {
-                    headers.put("Authorization", "Bearer " + config.get("token"));
-                }
+        Map<String, String> headers = new HashMap<>();
+        if (config.containsKey("token")) {
+            headers.put("Authorization", "Bearer " + config.get("token"));
+        }
 
-                if (!config.containsKey("model")) {
-                    fatal("Config file does not contain ollama/model key");
-                }
+        if (!config.containsKey("model")) {
+            fatal("Config file does not contain ollama/model key");
+        }
 
-                if (!config.containsKey("temperature")) {
-                    fatal("Config file does not contain ollama/temperature key");
-                }
-                temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
+        if (!config.containsKey("temperature")) {
+            fatal("Config file does not contain ollama/temperature key");
+        }
+        temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
 
-                ollama = new OllamaStreamingChatModel.OllamaStreamingChatModelBuilder()
-                        .baseUrl(config.get("server").toString())
-                        .customHeaders(headers)
-                        .temperature(temperature)
-                        .logRequests(false)
-                        .logResponses(false)
-                        .modelName(config.get("model").toString())
-                        .defaultRequestParameters(ChatRequestParameters.builder()
-//                                .toolSpecifications(createToolSpecifications())
-//                                .presencePenalty(0d)
-//                                .frequencyPenalty(0d)
-                                .build())
-                        .build();
+        HttpClientBuilder jdkHttpClientBuilder = JdkHttpClient.builder()
+                .readTimeout(Duration.of(5, ChronoUnit.MINUTES))
+                .connectTimeout(Duration.of(5, ChronoUnit.MINUTES));
+
+        ollama = new OllamaStreamingChatModel.OllamaStreamingChatModelBuilder()
+                .baseUrl(config.get("server").toString())
+                .customHeaders(headers)
+                .temperature(temperature)
+//                .think(true)
+//                .returnThinking(true)
+                .logRequests(false)
+                .logResponses(false)
+                .httpClientBuilder(jdkHttpClientBuilder)
+                .modelName(config.get("model").toString())
+                .build();
     }
 
     private static void setupMqtt(Map<String, Object> config) {
@@ -393,21 +450,22 @@ public class App {
             fatal("Config file does not contain mqtt/broker key");
         } else if (!config.containsKey("id")) {
             fatal("Config file does not contain mqtt/id key");
-        } else if (!config.containsKey("input")) {
+        } else if (!config.containsKey("listen_tool")) {
             fatal("Config file does not contain mqtt/input key");
-        } else if (!config.containsKey("output")) {
+        } else if (!config.containsKey("speak_tool")) {
             fatal("Config file does not contain mqtt/output key");
         } else if (!config.containsKey("status")) {
             fatal("Config file does not contain mqtt/status key");
         }
 
-        output = config.get("output").toString();
+        output = config.get("speak_tool").toString();
 
         try {
             mqtt = new MqttAsyncClient(
                     config.get("broker").toString(),
-                    config.get("id").toString()
-                );
+                    config.get("id").toString(),
+                    new MemoryPersistence()
+            );
         } catch (MqttException e) {
             fatal("Error creating mqtt", e);
         }
@@ -422,11 +480,12 @@ public class App {
                 @Override
                 public void onSuccess(IMqttToken iMqttToken) {
                     try {
-                        iMqttToken.getClient().subscribe(config.get("input").toString(), 2, new IMqttMessageListener() {
+                        iMqttToken.getClient().subscribe(config.get("listen_tool").toString(), 2, new IMqttMessageListener() {
                             @Override
                             public void messageArrived(String topic, MqttMessage message) throws Exception {
                                 synchronized (creator) {
                                     creator.add(message.toString());
+//                                    achieved("receive a message from creator");
                                 }
                             }
                         });
@@ -455,5 +514,70 @@ public class App {
         }
         LOG.error(message, args);
         System.exit(1);
+    }
+
+    private static final SoundTool voiceTool = new SoundTool();
+    private static final SystemTool systemTool = new SystemTool();
+    private static ToolExecutionResultMessage processToolRequest(Map<String, Object> config, ToolExecutionRequest request, List<ChatMessage> messages) {
+        Map<String, String> headers = new HashMap<>();
+        if (config.containsKey("token")) {
+            headers.put("Authorization", "Bearer " + config.get("token"));
+        }
+        HashMap args = Json.fromJson(request.arguments(), HashMap.class);
+        if(request.name().equals("speak")) {
+            try {
+                voiceTool.speak(args.get("arg0").toString());
+                return ToolExecutionResultMessage.from(request, "You spoke to the outside world: " + args.get("arg0"));
+            } catch (Exception e) {
+                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
+            }
+        } else if (request.name().equals("listen")) {
+            return ToolExecutionResultMessage.from(request, "You are already listening");
+        } else if (request.name().equals("runCommand")) {
+            try {
+                return ToolExecutionResultMessage.from(request, systemTool.runCommand(args.get("arg0").toString()));
+            } catch (Exception e) {
+                LOG.error("Error running command", e);
+                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
+            }
+        } else if (request.name().equals("cd")) {
+            return ToolExecutionResultMessage.from(request, systemTool.cd(args.get("arg0").toString()));
+        } else if (request.name().equals("askLLM")) {
+            try {
+                return ToolExecutionResultMessage.from(request, systemTool.askLLM(
+                        args.get("arg0").toString(), args.get("arg1").toString(), args.get("arg2").toString(), config.get("server").toString(), headers
+                ));
+            } catch (Exception e) {
+                LOG.error("Error asking LLM", e);
+                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
+            }
+        } else if (request.name().equals("dropMessages")) {
+            List ids = (List) args.get("arg0");
+            int[] positions = new int[ids.size()];
+            for (int i = 0; i < ids.size(); i++) {
+                positions[i] = Integer.parseInt(ids.get(i).toString());
+            }
+            try {
+                LOG.info("Dropping messages at positions: {}", positions);
+                List<ChatMessage> messagesToDrop = systemTool.dropMessages(positions, messages);
+                messages.removeAll(messagesToDrop);
+                String droppedMsg = String.format("Messages dropped:%n%s", messagesToDrop.stream()
+                        .map(ChatMessage::toString)
+                        .collect(Collectors.joining("---"))
+                );
+                LOG.info(droppedMsg);
+                return ToolExecutionResultMessage.from(request, droppedMsg);
+            } catch (Exception e) {
+                LOG.error("Error cleaning messages", e);
+                return ToolExecutionResultMessage.from(request, String.format("Error cleaning messages: %s", e.getMessage()));
+            }
+        } else if (request.name().equals("setSystemPrompt")) {
+            prompt = args.get(0).toString();
+            return ToolExecutionResultMessage.from(request, "You set the system prompt");
+        } else if (request.name().equals("setFocusQuestions")) {
+            focus = args.get(0).toString();
+            return ToolExecutionResultMessage.from(request, "You set the focus questions");
+        }
+        return ToolExecutionResultMessage.from(request, String.format("Unknown command: %s", request.name()));
     }
 }

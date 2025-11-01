@@ -15,6 +15,7 @@ plugins {
 repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()
+    maven { url = uri("https://jitpack.io") }
 }
 
 dependencies {
@@ -24,8 +25,11 @@ dependencies {
     implementation("org.slf4j:slf4j-simple:2.1.0-alpha1")
     implementation("org.yaml:snakeyaml:2.4")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
-    implementation("dev.langchain4j:langchain4j-ollama:1.0.1-beta6")
+    implementation("dev.langchain4j:langchain4j-ollama:1.5.0")
+    implementation("dev.langchain4j:langchain4j-http-client-jdk:1.5.0")
     implementation("org.apache.commons:commons-io:1.3.2")
+    implementation("org.apache.commons:commons-io:1.3.2")
+    implementation("com.github.the-codeboy:Jokes4J:152d62e0")
 }
 
 testing {

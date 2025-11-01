@@ -15,8 +15,10 @@ ENV JAVA_HOME=/usr/lib/jvm/java-19-openjdk-amd64
 
 RUN apt install -y man-db
 
-COPY app/build/libs/app-all.jar loopus.jar
+RUN echo "Copying Loopus..."
+COPY app/build/libs/app-all.jar mirror.jar
 COPY config.yaml .
 
 
-CMD ["java", "-jar", "loopus.jar", "config.yaml"]
+WORKDIR /data
+CMD ["java", "-jar", "/mirror.jar", "/config.yaml"]

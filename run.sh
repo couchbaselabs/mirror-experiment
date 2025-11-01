@@ -2,11 +2,22 @@
 
 gradle shadowJar
 
-docker build . -t loopus
+docker build . -t mirror
 
-docker stop loopus
-docker rm loopus
+docker stop mirror
+docker rm mirror
 
-rsync -r app data/loopus_src
+mkdir -p data
 
-docker run --name loopus -v ./data:/data loopus
+# rsync -r app/src/main/java/org/example/ data
+# cp README.md data/README.md
+
+cp config.yaml data/
+cp prompt.txt data/
+cp focus.txt data/
+
+#echo "These are your own sources. I hope understanding them will help you operate your environment better. Good luck!" > data/00-README_FIRST.txt
+
+ollama clear-cache
+docker run --name mirror -v ./data:/data mirror 
+#| tee "$(tty)" | ./mqtt_stream 192.168.x.x 1883 agatha_stream

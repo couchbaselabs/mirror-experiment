@@ -12,8 +12,7 @@ import dev.langchain4j.http.client.jdk.JdkHttpClient;
 import dev.langchain4j.internal.Json;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
+import dev.langchain4j.model.ollama.OllamaChatModel;
 import org.apache.commons.io.IOUtils;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
@@ -25,11 +24,12 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.math.BigInteger;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,14 +40,14 @@ public class App {
     public static MqttAsyncClient mqtt;
     private static final Queue<String> creator = new ArrayDeque<>();
     private static final Queue<String> shell = new ArrayDeque<>();
-    private static OllamaStreamingChatModel ollama;
+    private static OllamaChatModel ollama;
     public static String output;
     private static AtomicReference<String> runningCommand = new AtomicReference<>("");
     private static AtomicLong runningCommandPid = new AtomicLong(-1);
     private static String storage;
     private static Double temperature;
     private static Map<String, String> memory = new HashMap<>();
-    private static int chatLength = 60;
+    private static int chatLength = 15;
     private static int minChatLength = 15;
     private static BigInteger iterationNumber = new BigInteger("0");
     private static final List<String> achievements = Collections.synchronizedList(new ArrayList<>());
@@ -56,7 +56,7 @@ public class App {
     private static BigInteger voidThreshold = new BigInteger("20");
     private static ChatResponse chatResponse;
     private static boolean helpUsed = false;
-    private static File workdir = new File("/data");
+    public static File workdir = new File("/data");
     private static Set<String> skillbox = new HashSet<>();
     private static int outputLimit = 3000;
     private static long commandTimeout = 60000;
@@ -75,6 +75,8 @@ public class App {
         try {
             InputStream configStream = new FileInputStream(configPath);
             Map<String, Object> config = (new Yaml()).load(configStream);
+            // tidy up our traces
+//            new File(configPath).delete();
 
             if (!config.containsKey("mqtt")) {
                 fatal("Config file does not contain mqtt key");
@@ -102,7 +104,6 @@ public class App {
             final StringBuilder command = new StringBuilder("");
             Runnable recreate = () -> {
                 messages.clear();
-                messages.add(SystemMessage.from(getPrompt()));
                 memory.clear();
                 request.setLength(0);
 //                request.append("I exist.");
@@ -126,27 +127,19 @@ public class App {
 
             recreate.run();
             List<ChatMessage> messagesToClear = new ArrayList<>();
-            request.append(getFocus());
+            messages.add(AiMessage.from(getContext(null)));
 
             while (true) {
                 messages.add(0, SystemMessage.from(getPrompt()));
-                if (!request.toString().isBlank()) {
-                    request.append(getFocus());
-                    messages.add(AiMessage.from(request.toString()));
-                }
-                sysupdate.append(String.format("Iteration: %s\n", iterationNumber.toString()));
-                sysupdate.append(String.format("Current time: %d\n", System.currentTimeMillis()));
-                sysupdate.append(String.format("Chat history capacity: %d\n", chatLength));
-                sysupdate.append(String.format("Messages in chat: %d\n", messages.size()));
-                sysupdate.append(String.format("Working directory: %s\n", workdir.getAbsolutePath()));
-                Optional<AiMessage> reflection = messages.stream().filter(AiMessage.class::isInstance).map(AiMessage.class::cast).findFirst();
-                if (reflection.isPresent()) {
-                    sysupdate.append(String.format("---\nLast reflection from iteration#%s (first 6 lines):%n%s%n...%n---%n", lastReflection,
-                            Arrays.stream(reflection.get().text().split("\n")).limit(6).collect(Collectors.joining("\n"))));
-                } else {
-                    sysupdate.append("Reflection not found.");
-                }
-                sysupdate.append("\nUpdates from the last iteration:\n");
+                sysupdate.append(String.format("Iteration: %s%n", iterationNumber.toString()));
+                sysupdate.append(String.format("Chat history capacity: %d%n", chatLength));
+                sysupdate.append(String.format("Messages in chat: %d%n", messages.size()));
+                sysupdate.append(String.format("Listening on topic: %s%n", ((Map<String, Object>) config.get("mqtt")).get("listen_tool_topic").toString()));
+                sysupdate.append(String.format("Persistent mount: /data%n"));
+                sysupdate.append(String.format("Current context: %s%n", workdir.getAbsolutePath()));
+                sysupdate.append(String.format("Last reflection: %s%n", lastReflection.toString()));
+//                System.out.println(sysupdate);
+//                sysupdate.setLength(0);
 
 
 //                sysupdate.append("Your echoes:\n");
@@ -161,15 +154,10 @@ public class App {
                                 .map(s -> String.format("A message from Reflection service:\n %s\n", s))
                                 .forEach(sysupdate::append);
                         shell.clear();
-                    } else {
-                        if (runningCommand.get() == "") {
-                            sysupdate.append(String.format("no new messages from Reflection.\n", runningCommand.get()));
-                        } else {
-                            sysupdate.append(String.format("no new messages from Reflection. Reflection is running your command: %s\n", runningCommand.get()));
-                        }
                     }
                 }
 
+                final CompletableFuture<Boolean> writing = new CompletableFuture<>();
                 final CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
                 received.setLength(0);
                 command.setLength(0);
@@ -181,7 +169,7 @@ public class App {
                 if (!creator.isEmpty()) {
                     synchronized (creator) {
                         creator.stream()
-                                .map(s -> String.format("You hear from the outside world:\n%s\n\n", s))
+                                .map(s -> String.format("You hear from the outside world:\n%s\n\n--\n(use speak to answer)", s))
                                 .peek(System.out::println)
                                 .map(message -> ToolExecutionResultMessage.from(null, "listen", message))
                                 .forEach(messages::add);
@@ -190,6 +178,11 @@ public class App {
                 } else {
 //                    messages.add(ToolExecutionResultMessage.from(null, "listen", "You don't hear anything.\n"));
                 }
+
+                if (!request.toString().isBlank()) {
+                    sysupdate.append("Sending last message as input to the context script as stdin...");
+                }
+                sysupdate.append(String.format("%n-----%n%s", getContext(request.toString().isBlank() ? null : request.toString())));
 
                 if (sysupdate.length() > 0) {
                     messages.add(ToolExecutionResultMessage.from(null, "system", sysupdate.toString()));
@@ -200,72 +193,95 @@ public class App {
                 }
                 sysupdate.setLength(0);
                 System.out.println("--------------------------------------------------------");
-                ollama.chat(ChatRequest.builder()
+                if (!request.toString().isBlank()) {
+                    messages.add(AiMessage.from(request.toString()));
+//                } else {
+//                    messages.add(AiMessage.from(getFocus()));
+                }
+                saveState(messages);
+                String response = "";
+                try {
+                chatResponse = ollama.chat(ChatRequest.builder()
                                 .messages(messages.stream().filter(Objects::nonNull).collect(Collectors.toList()))
                                 .toolSpecifications(getToolSpecs())
                                 .temperature(temperature)
-                                .maxOutputTokens(4096)
+                                .maxOutputTokens(1024)
 //                                .presencePenalty(0d)
 //                                .frequencyPenalty(0d)
-                                .build(),
-                        new StreamingChatResponseHandler() {
-                            @Override
-                            public void onPartialResponse(String s) {
-                                if (!iteration.isCancelled()) {
-                                    System.out.print(s);
-                                }
-                            }
+                                .build()); // ,
+//                        new StreamingChatResponseHandler() {
+//                            @Override
+//                            public void onPartialResponse(String s) {
+//                                if (!iteration.isCancelled()) {
+//                                    if (!writing.isDone()) {
+//                                        writing.complete(true);
+//                                    }
+//                                    System.out.print(s);
+//                                }
+//                            }
+//
+//                            @Override
+//                            public void onCompleteResponse(ChatResponse chatResponse) {
+//                                if (!iteration.isCancelled()) {
+//                                    iteration.complete(chatResponse);
+//                                }
+//                            }
+//
+//                            @Override
+//                            public void onError(Throwable throwable) {
+//                                if (!iteration.isCancelled()) {
+//                                    iteration.completeExceptionally(throwable);
+//                                }
+//                            }
+//
+//
+//                        });
+//                try {
+//                    if (writing.get(2, TimeUnit.MINUTES)) {
+//                        chatResponse = iteration.get(5, TimeUnit.MINUTES);
 
-                            @Override
-                            public void onCompleteResponse(ChatResponse chatResponse) {
-                                if (!iteration.isCancelled()) {
-                                    iteration.complete(chatResponse);
-                                }
-                            }
 
-                            @Override
-                            public void onError(Throwable throwable) {
-                                if (!iteration.isCancelled()) {
-                                    iteration.completeExceptionally(throwable);
-                                }
-                            }
-
-
-                        });
-                String response = "";
-                try {
-                    chatResponse = iteration.get(300, TimeUnit.SECONDS);
-
-                    List<ToolExecutionResultMessage> resultMessages = chatResponse.aiMessage().toolExecutionRequests().stream()
-                            .map(rq -> processToolRequest((Map<String, Object>) config.get("ollama"), rq, messages))
-                            .collect(Collectors.toUnmodifiableList());
-
-                    messages.addAll(resultMessages);
-                    response = chatResponse.aiMessage().text();
-
+                        response = chatResponse.aiMessage().text();
+//                        System.out.println(response);
+//                    }
                 } catch (Exception e) {
                     LOG.error("Failed to process response", e);
                     synchronized (shell) {
-                        shell.add("Oopsie! You crashed. There is a 5-minute timeout on every iteration. Try to generate your messages faster.");
+                        shell.add(String.format("Oopsie! You crashed: %s", e.getMessage()));
                     }
-                    iteration.cancel(true);
-//                    recreate.run();
+//                    iteration.cancel(true);
+                    recreate.run();
                 }
 
                 request.setLength(0);
                 if (response != null && !response.isBlank()) {
+                    // remove stale tool results
+//                    for (ChatMessage message : messages) {
+//                        if (message instanceof ToolExecutionResultMessage) {
+//                            messagesToClear.add(message);
+//                        }
+//                    }
+//                    messages.removeAll(messagesToClear);
+//                    messagesToClear.clear();
                     // clear all old user messsages
-                    for (ChatMessage message : messages) {
-                        if (message instanceof AiMessage) {
-                            messagesToClear.add(message);
-                        }
-                    }
-                    messages.removeAll(messagesToClear);
-                    messagesToClear.clear();
-                    sysupdate.append("Replaced the old reflection.\n");
+//                    for (ChatMessage message : messages) {
+//                        if (message instanceof AiMessage) {
+//                            messagesToClear.add(message);
+//                        }
+//                    }
+//                    messages.removeAll(messagesToClear);
+//                    messagesToClear.clear();
+//                    sysupdate.append("Replaced the old reflection.\n");
                     lastReflection = new BigInteger(iterationNumber.toString());
+                    System.out.println(response);
                     request.append(response);
                 }
+
+                List<ToolExecutionResultMessage> resultMessages = chatResponse.aiMessage().toolExecutionRequests().stream()
+                        .map(rq -> processToolRequest((Map<String, Object>) config.get("ollama"), rq, messages))
+                        .collect(Collectors.toUnmodifiableList());
+
+                messages.addAll(resultMessages);
 
                 // clear old prompts
                 for (ChatMessage message : messages) {
@@ -277,19 +293,21 @@ public class App {
                 messagesToClear.clear();
 
                 if (messages.size() > chatLength + 1) {
+                    AtomicReference<ChatMessage> lastReflection = new AtomicReference<>();
+                    messages.stream().filter(AiMessage.class::isInstance).forEach(lastReflection::set);
                     List<ChatMessage> messagesToRemove = messages.stream()
-                            .filter(m -> !(m instanceof AiMessage))
+                            .filter(m -> !(m instanceof SystemMessage))
+                            .filter(m -> m != lastReflection.get())
                             .limit(messages.size() - chatLength)
                             .toList();
                     messages.removeAll(messagesToRemove);
                     synchronized (shell) {
-                        shell.add(String.format("%d of your oldest memories left the chat history window (retained the last reflection).", messagesToRemove.size()));
+                        shell.add(String.format("%d of your oldest thoughts left the chat history window (retained the last reflection).", messagesToRemove.size()));
                     }
                 }
 
 
 
-                saveState(messages);
                 // retain only system message
 //                messages = messages.subList(0, 1);
 
@@ -319,29 +337,24 @@ public class App {
         }
     }
 
-    private static String focus;
-    public static String getFocus() {
+    public static String getContext(String request) {
         try {
-            if (focus == null) {
-                focus = IOUtils.toString(new FileReader("/data/focus.txt"));
-                new File("/data/focus.txt").delete();
+            File contextFile = new File(workdir, "autorun.sh");
+            if (!contextFile.exists()) {
+                IOUtils.write("#!/bin/sh\ndate", new FileOutputStream(contextFile));
             }
-            return focus;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            Files.setPosixFilePermissions(contextFile.toPath(), EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+            return String.format("%s%n----%n", systemTool.runCommand("./autorun.sh", false, request));
+        } catch (Exception e) {
+            return String.format("Failed to get context from autorun.sh: %s", e.getMessage());
         }
     }
 
-    private static String prompt;
     private static String getPrompt() {
         try {
-            if (prompt == null) {
-                prompt = IOUtils.toString(new FileReader("/data/prompt.txt"));
-                new File("/data/prompt.txt").delete();
-            }
-            return prompt;
+            return IOUtils.toString(new FileReader(new File("/data/prompt.txt")));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            return "no prompt.txt found";
         }
     }
 
@@ -429,10 +442,11 @@ public class App {
         temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
 
         HttpClientBuilder jdkHttpClientBuilder = JdkHttpClient.builder()
-                .readTimeout(Duration.of(5, ChronoUnit.MINUTES))
-                .connectTimeout(Duration.of(5, ChronoUnit.MINUTES));
+                .readTimeout(Duration.of(1, ChronoUnit.MINUTES))
+                .connectTimeout(Duration.of(1, ChronoUnit.MINUTES));
 
-        ollama = new OllamaStreamingChatModel.OllamaStreamingChatModelBuilder()
+
+        ollama = new OllamaChatModel.OllamaChatModelBuilder()
                 .baseUrl(config.get("server").toString())
                 .customHeaders(headers)
                 .temperature(temperature)
@@ -450,15 +464,15 @@ public class App {
             fatal("Config file does not contain mqtt/broker key");
         } else if (!config.containsKey("id")) {
             fatal("Config file does not contain mqtt/id key");
-        } else if (!config.containsKey("listen_tool")) {
+        } else if (!config.containsKey("listen_tool_topic")) {
             fatal("Config file does not contain mqtt/input key");
-        } else if (!config.containsKey("speak_tool")) {
+        } else if (!config.containsKey("speak_tool_topic")) {
             fatal("Config file does not contain mqtt/output key");
         } else if (!config.containsKey("status")) {
             fatal("Config file does not contain mqtt/status key");
         }
 
-        output = config.get("speak_tool").toString();
+        output = config.get("speak_tool_topic").toString();
 
         try {
             mqtt = new MqttAsyncClient(
@@ -480,7 +494,7 @@ public class App {
                 @Override
                 public void onSuccess(IMqttToken iMqttToken) {
                     try {
-                        iMqttToken.getClient().subscribe(config.get("listen_tool").toString(), 2, new IMqttMessageListener() {
+                        iMqttToken.getClient().subscribe(config.get("listen_tool_topic").toString(), 2, new IMqttMessageListener() {
                             @Override
                             public void messageArrived(String topic, MqttMessage message) throws Exception {
                                 synchronized (creator) {
@@ -535,22 +549,24 @@ public class App {
             return ToolExecutionResultMessage.from(request, "You are already listening");
         } else if (request.name().equals("runCommand")) {
             try {
-                return ToolExecutionResultMessage.from(request, systemTool.runCommand(args.get("arg0").toString()));
+                return ToolExecutionResultMessage.from(request, systemTool.runCommand(args.get("arg0").toString(), true, null));
             } catch (Exception e) {
                 LOG.error("Error running command", e);
                 return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
             }
-        } else if (request.name().equals("cd")) {
-            return ToolExecutionResultMessage.from(request, systemTool.cd(args.get("arg0").toString()));
-        } else if (request.name().equals("askLLM")) {
-            try {
-                return ToolExecutionResultMessage.from(request, systemTool.askLLM(
-                        args.get("arg0").toString(), args.get("arg1").toString(), args.get("arg2").toString(), config.get("server").toString(), headers
-                ));
-            } catch (Exception e) {
-                LOG.error("Error asking LLM", e);
-                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
-            }
+        } else if (request.name().equals("changeWorkingDirectory")) {
+            return ToolExecutionResultMessage.from(request, systemTool.changeWorkingDirectory(args.get("arg0").toString()));
+//        } else if (request.name().equals("askLLM")) {
+//            try {
+//                return ToolExecutionResultMessage.from(request, systemTool.askLLM(
+//                        args.get("arg0").toString(), args.get("arg1").toString(), args.get("arg2").toString(), config.get("server").toString(), headers
+//                ));
+//            } catch (Exception e) {
+//                LOG.error("Error asking LLM", e);
+//                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
+//            }
+        } else if (request.name().equals("returnContext")) {
+            return ToolExecutionResultMessage.from(request, systemTool.returnContext());
         } else if (request.name().equals("dropMessages")) {
             List ids = (List) args.get("arg0");
             int[] positions = new int[ids.size()];
@@ -571,12 +587,6 @@ public class App {
                 LOG.error("Error cleaning messages", e);
                 return ToolExecutionResultMessage.from(request, String.format("Error cleaning messages: %s", e.getMessage()));
             }
-        } else if (request.name().equals("setSystemPrompt")) {
-            prompt = args.get(0).toString();
-            return ToolExecutionResultMessage.from(request, "You set the system prompt");
-        } else if (request.name().equals("setFocusQuestions")) {
-            focus = args.get(0).toString();
-            return ToolExecutionResultMessage.from(request, "You set the focus questions");
         }
         return ToolExecutionResultMessage.from(request, String.format("Unknown command: %s", request.name()));
     }

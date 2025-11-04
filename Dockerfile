@@ -13,9 +13,9 @@ RUN apt-get install -y $JAVA_VERSION
 # Setup JAVA_HOME
 ENV JAVA_HOME=/usr/lib/jvm/java-19-openjdk-amd64
 
-RUN apt install -y man-db
+RUN apt update && apt install -y man-db tree
 
-RUN echo "Copying Loopus..."
+RUN echo "Copying Mirror..."
 COPY app/build/libs/app-all.jar mirror.jar
 COPY config.yaml .
 

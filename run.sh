@@ -14,7 +14,9 @@ mkdir -p data
 
 cp config.yaml data/
 cp prompt.txt data/
-cp focus.txt data/
+cp iteration-autorun.sh data/autorun.sh
+
+echo "Not chosen" > data/name.txt
 
 #echo "These are your own sources. I hope understanding them will help you operate your environment better. Good luck!" > data/00-README_FIRST.txt
 

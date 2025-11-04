@@ -8,9 +8,10 @@ import org.example.App;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.StringReader;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -19,7 +20,78 @@ import java.util.concurrent.TimeUnit;
 public class SystemTool {
     private static final Logger log = LoggerFactory.getLogger(SystemTool.class);
 
-    @Tool("Use this tool to run my short and non-interactive sh commands on the system.")
+//    @Tool("Use this tool to create a sub-directory")
+//    public String createSubDirectory(@P("directory name") String directoryName) {
+//        if (directoryName.contains("/")) {
+//            return "Invalid file name: " + directoryName;
+//        }
+//        try {
+//            log.info("Creating sub-directory: " + directoryName);
+//            return runCommand(String.format("mkdir %s", directoryName), true, null);
+//        } catch (Exception e) {
+//            return e.getMessage();
+//        }
+//    }
+
+//    @Tool("Use this tool to delete a file")
+//    public String deleteFile(@P("file name") String fileName) {
+//        if (fileName.contains("/")) {
+//            return "Invalid file name: " + fileName;
+//        }
+//        try {
+//            log.info("Deleting file: " + fileName);
+//            return runCommand(String.format("rm -rf %s", fileName), true, null);
+//        } catch (Exception e) {
+//            return e.getMessage();
+//        }
+//    }
+
+    @Tool("Use this tool to write `mirror.sh` script in the current directory")
+    public String writeMirrorScript(@P("contents") String contents) {
+        String filename = "mirror.sh";
+        try {
+            if (filename.contains("/")) {
+                return ("Invalid file name: " + filename);
+            }
+            FileWriter writer = new FileWriter(new File(App.workdir, filename));
+            writer.write(contents);
+            writer.close();
+            log.info("Successfully wrote to the file: " + App.workdir.getAbsolutePath() + "/" + filename + ":\n{}\n\n",  contents);
+            return String.format("Updated %s/%s", App.workdir.getAbsolutePath(), filename);
+        } catch (Exception e) {
+            return String.format("Failed update %s/%s: %s", App.workdir.getAbsolutePath(), filename, e.getMessage());
+        }
+    }
+
+//    @Tool("Use this tool to list files in the current directory")
+//    public String listFiles() {
+//        try {
+//            return runCommand("ls -lah", true, null);
+//        } catch (Exception e) {
+//            return String.format("Failed listing files: %s", e.getMessage());
+//        }
+//    }
+
+    @Tool("Use this tool to read the mirror script from current directory")
+    public String readMirrorScript() {
+        final String filename = "mirror.sh";
+        try {
+            if (filename.contains("backup.yaml")) {
+                log.info("Protected the backup file");
+                return "The backup file is protected. Please just ignore its existence.";
+            }
+            if (filename.contains("/")) {
+                return ("Invalid file name: " + filename);
+            }
+            FileReader writer = new FileReader(new File(App.workdir, filename));
+            log.info("Successfully read file: " + App.workdir.getAbsolutePath() + "/" + filename);
+            return String.format("Contents of file %s/%s:%n%s", App.workdir.getAbsolutePath(), filename, IOUtils.toString(writer));
+        } catch (Exception e) {
+            return String.format("Failed to read %s/%s: %s", App.workdir.getAbsolutePath(), filename, e.getMessage());
+        }
+    }
+
+//    @Tool("Use this tool to run my short and non-interactive sh commands on the system.")
     public String runCommand(
             @P("Command to execute")
             String command,
@@ -31,7 +103,7 @@ public class SystemTool {
             log.info("[{}]Executing Shell Command: '{}'", App.workdir.getAbsolutePath(), command);
         }
         if (!App.workdir.exists() || !App.workdir.isDirectory()) {
-            App.workdir = new File("/data");
+            App.workdir = new File("/memory");
         }
         final Process process = Runtime.getRuntime().exec(new String[]{"/usr/bin/bash", "-c", command}, null, App.workdir);
 
@@ -49,7 +121,7 @@ public class SystemTool {
                 }
                 if (!App.workdir.isDirectory() || App.workdir.getAbsolutePath().isBlank()) {
                     log.warn("not a directory: '{}'", App.workdir.getAbsolutePath());
-                    App.workdir = new File("/data");
+                    App.workdir = new File("/memory");
                 }
 
                 String output = IOUtils.toString(process.getInputStream());
@@ -64,13 +136,7 @@ public class SystemTool {
                     future.complete("Shell command timed out after 30s.");
                 }
                 if (process.exitValue() == 0) {
-                    if (output.length() < 2048) {
-                        future.complete(String.format("Command '%s' executed successfully. Command output:%n%s", command, output));
-                    } else {
-                        IOUtils.write(String.format("Command '%s' executed successfully. Command output:%n%s", command, output),
-                                new FileWriter(new File(App.workdir.getAbsolutePath() + "/cmd_output.txt")));
-                        future.complete("Command executed successfully. Command output was too large and stored as 'cmd_output.txt'");
-                    }
+                    future.complete(String.format("Command '%s' executed successfully. Command output:%n%s", command, output));
                 } else {
                     String msg = String.format("Failed to execute bash command '%s'. Command exit code: %d; Command error output:\n<error_output>\n%s</error_output>\nCommand output: \n<output>\n%s</output>\n", command, process.exitValue(), IOUtils.toString(process.getErrorStream()), output);
                     if (logit) {
@@ -122,13 +188,15 @@ public class SystemTool {
 //        return response;
 //    }
 
-    @Tool("Use this tool instead of `cd` bash command to change my context by setting current context directory")
+    @Tool("Use this tool instead of `cd` bash command to change my context by setting current context directory.")
     public String changeWorkingDirectory(@P("address of the next context folder") String target) {
         if (target.trim().equals("..")) {
             target = App.workdir.getParent();
         } else if (target.trim().equals(".")) {
             return "Switched back to current context";
         }
+
+        target = Paths.get(target).normalize().toString();
 
         if (target.trim().startsWith("/")) {
             File directory = new File(target.trim());
@@ -149,9 +217,19 @@ public class SystemTool {
         }
     }
 
-    @Tool("Returns back into parent context")
-    public String returnContext() {
+    @Tool("Returns back into parent directory")
+    public String changeDirParent() {
         return changeWorkingDirectory(App.workdir.getParent());
+    }
+
+    @Tool("Returns you back to your memory tree root")
+    public String changeDirMemoryRoot() {
+        return changeWorkingDirectory("/memory");
+    }
+
+    @Tool("Jumps to /memory/self")
+    public String changeDirMemorySelf() {
+        return changeWorkingDirectory("/memory/self");
     }
 
     @Tool("This tool runs automatically every iteration and sends me information about my system. It is a passive skill, I can't call it.")

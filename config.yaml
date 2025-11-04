@@ -1,10 +1,8 @@
 image: "ubuntu:latest"
-mqtt: # mqtt configuration for speak and listen tools
-  broker: tcp://192.168.x.x:1883
-  id: mirror
-  listen_tool_topic: agatha_input # topic for incoming messages from outside the environment that AGI receives with its `listen` tool
-  speak_tool_topic: agatha_output # topic for outgoing messages sent by AGI with `speak`
-  status: agatha_status # not used
+internet_gw: 192.168.x.x # no internet between 12am and 6am
+homeassistant: # some sensory and location data
+  server: https://example.invalid
+  api_key: ***REMOVED***
 ollama:
 #  server: https://ai.example.invalid/ollama/
   server: http://host.docker.internal:11434/
@@ -20,12 +18,14 @@ ollama:
 #  model: "qwen3-coder:30b"
 #  model: "gemma3:12b"
 #  model: "llama3-groq-tool-use:8b"
-  temperature: 0
-homeassistant: # some sensory and location data
-  server: https://example.invalid
-  api_key: ***REMOVED***
-internet_gw: 192.168.x.x # no internet between 12am and 6am
-storage: /data/.backup.yaml
+  temperature: 0.7
+mqtt: # mqtt configuration for speak and listen tools
+  broker: tcp://192.168.x.x:1883
+  id: mirror
+  listen_tool_topic: agatha_input # topic for incoming messages from outside the environment that AGI receives with its `listen` tool
+  speak_tool_topic: agatha_output # topic for outgoing messages sent by AGI with `speak`
+  status: agatha_status # not used
+storage: /memory/.backup.yaml
 #storage: data/.backup.yaml
 #sleep_period: 1000
 iteration_timeout: 1m

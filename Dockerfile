@@ -14,11 +14,15 @@ RUN apt-get install -y $JAVA_VERSION
 ENV JAVA_HOME=/usr/lib/jvm/java-19-openjdk-amd64
 
 RUN apt update && apt install -y man-db tree
+RUN apt-get update && apt-get install -y tzdata && \
+    ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
+    echo "America/New_York" > /etc/timezone
+
 
 RUN echo "Copying Mirror..."
 COPY app/build/libs/app-all.jar mirror.jar
 COPY config.yaml .
 
 
-WORKDIR /data
+WORKDIR /memory
 CMD ["java", "-jar", "/mirror.jar", "/config.yaml"]

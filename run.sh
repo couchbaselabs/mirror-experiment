@@ -1,25 +1,22 @@
 #! /bin/sh
+set -e
 
 gradle shadowJar
 
 docker build . -t mirror
 
-docker stop mirror
-docker rm mirror
+docker stop mirror && docker rm mirror || echo "was not running"
 
-mkdir -p data
+if [ ! -d memory ]; then
+  cp -r memory-init memory
+fi
 
-# rsync -r app/src/main/java/org/example/ data
-# cp README.md data/README.md
+# rsync -r app/src/main/java/org/example/ memory
+# cp README.md memory/README.md
 
-cp config.yaml data/
-cp prompt.txt data/
-cp iteration-autorun.sh data/autorun.sh
+cp config.yaml memory/system
 
-echo "Not chosen" > data/name.txt
+#echo "These are your own sources. I hope understanding them will help you operate your environment better. Good luck!" > memory/00-README_FIRST.txt
 
-#echo "These are your own sources. I hope understanding them will help you operate your environment better. Good luck!" > data/00-README_FIRST.txt
-
-ollama clear-cache
-docker run --name mirror -v ./data:/data mirror 
+docker run --name mirror -v ./memory:/memory mirror
 #| tee "$(tty)" | ./mqtt_stream 192.168.x.x 1883 agatha_stream

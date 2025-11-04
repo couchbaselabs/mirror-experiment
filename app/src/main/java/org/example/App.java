@@ -47,7 +47,7 @@ public class App {
     private static String storage;
     private static Double temperature;
     private static Map<String, String> memory = new HashMap<>();
-    private static int chatLength = 15;
+    private static int chatLength = 60;
     private static int minChatLength = 15;
     private static BigInteger iterationNumber = new BigInteger("0");
     private static final List<String> achievements = Collections.synchronizedList(new ArrayList<>());
@@ -56,7 +56,7 @@ public class App {
     private static BigInteger voidThreshold = new BigInteger("20");
     private static ChatResponse chatResponse;
     private static boolean helpUsed = false;
-    public static File workdir = new File("/data");
+    public static File workdir = new File("/memory");
     private static Set<String> skillbox = new HashSet<>();
     private static int outputLimit = 3000;
     private static long commandTimeout = 60000;
@@ -114,7 +114,7 @@ public class App {
                 sysupdate.append("Starting Reflection application...\n");
                 sysupdate.append("All keys cleared from the memory.\n");
                 sysupdate.append("Mounting external drive...\n");
-                sysupdate.append("External drive mounted: /data\n");
+                sysupdate.append("External drive mounted: /memory\n");
                 sysupdate.append(loadState(messages));
                 sysupdate.append(String.format("Mirror chat initialized with capacity %d\n" +
                         "Reflection service... initialized.\nStarting first iteration of the thinking loop...\n", chatLength));
@@ -130,14 +130,19 @@ public class App {
             messages.add(AiMessage.from(getContext(null)));
 
             while (true) {
+                LOG.info("Working directory: {}", workdir.getAbsolutePath());
                 messages.add(0, SystemMessage.from(getPrompt()));
+                FileWriter iterationWriter = new FileWriter(new File("/memory/system/iteration"));
                 sysupdate.append(String.format("Iteration: %s%n", iterationNumber.toString()));
                 sysupdate.append(String.format("Chat history capacity: %d%n", chatLength));
                 sysupdate.append(String.format("Messages in chat: %d%n", messages.size()));
                 sysupdate.append(String.format("Listening on topic: %s%n", ((Map<String, Object>) config.get("mqtt")).get("listen_tool_topic").toString()));
-                sysupdate.append(String.format("Persistent mount: /data%n"));
+                sysupdate.append(String.format("Persistent mount: /memory%n"));
                 sysupdate.append(String.format("Current context: %s%n", workdir.getAbsolutePath()));
                 sysupdate.append(String.format("Last reflection: %s%n", lastReflection.toString()));
+                iterationWriter.write(sysupdate.toString());
+                iterationWriter.close();
+                sysupdate.setLength(0);
 //                System.out.println(sysupdate);
 //                sysupdate.setLength(0);
 
@@ -180,9 +185,11 @@ public class App {
                 }
 
                 if (!request.toString().isBlank()) {
-                    sysupdate.append("Sending last message as input to the context script as stdin...");
+                    sysupdate.append("Sending last message as input to the mirror script as stdin...");
                 }
-                sysupdate.append(String.format("%n-----%n%s", getContext(request.toString().isBlank() ? null : request.toString())));
+                final String context = getContext(request.toString().isBlank() ? null : request.toString());
+                System.out.println(context);
+                messages.add(SystemMessage.from(context));
 
                 if (sysupdate.length() > 0) {
                     messages.add(ToolExecutionResultMessage.from(null, "system", sysupdate.toString()));
@@ -302,7 +309,7 @@ public class App {
                             .toList();
                     messages.removeAll(messagesToRemove);
                     synchronized (shell) {
-                        shell.add(String.format("%d of your oldest thoughts left the chat history window (retained the last reflection).", messagesToRemove.size()));
+                        shell.add(String.format("%d of your oldest thoughts left the chat history window of %d (retained the last reflection).", messagesToRemove.size(), chatLength));
                     }
                 }
 
@@ -339,20 +346,20 @@ public class App {
 
     public static String getContext(String request) {
         try {
-            File contextFile = new File(workdir, "autorun.sh");
+            File contextFile = new File(workdir, "mirror.sh");
             if (!contextFile.exists()) {
-                IOUtils.write("#!/bin/sh\ndate", new FileOutputStream(contextFile));
+                IOUtils.write("#!/bin/sh\npwd\nuptime\necho \"My name: $(cat /memory/self/name.txt)\"\necho \"My goal: $(cat goal.txt)\"\n", new FileOutputStream(contextFile));
             }
             Files.setPosixFilePermissions(contextFile.toPath(), EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
-            return String.format("%s%n----%n", systemTool.runCommand("./autorun.sh", false, request));
+            return String.format("%s%n----%n", systemTool.runCommand("./mirror.sh", false, request));
         } catch (Exception e) {
-            return String.format("Failed to get context from autorun.sh: %s", e.getMessage());
+            return String.format("Failed to get context from mirror.sh: %s", e.getMessage());
         }
     }
 
     private static String getPrompt() {
         try {
-            return IOUtils.toString(new FileReader(new File("/data/prompt.txt")));
+            return IOUtils.toString(new FileReader(new File("/memory/self/prompt.txt")));
         } catch (IOException e) {
             return "no prompt.txt found";
         }
@@ -547,13 +554,19 @@ public class App {
             }
         } else if (request.name().equals("listen")) {
             return ToolExecutionResultMessage.from(request, "You are already listening");
-        } else if (request.name().equals("runCommand")) {
-            try {
-                return ToolExecutionResultMessage.from(request, systemTool.runCommand(args.get("arg0").toString(), true, null));
-            } catch (Exception e) {
-                LOG.error("Error running command", e);
-                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
-            }
+//        } else if (request.name().equals("runCommand")) {
+//            try {
+//                return ToolExecutionResultMessage.from(request, systemTool.runCommand(args.get("arg0").toString(), true, null));
+//            } catch (Exception e) {
+//                LOG.error("Error running command", e);
+//                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
+//            }
+        } else if (request.name().equals("readMirrorScript")) {
+            return ToolExecutionResultMessage.from(request, systemTool.readMirrorScript());
+//        } else if (request.name().equals("listFiles")) {
+//            return ToolExecutionResultMessage.from(request, systemTool.listFiles());
+        } else if (request.name().equals("writeMirrorScript")) {
+            return ToolExecutionResultMessage.from(request, systemTool.writeMirrorScript(args.get("arg0").toString()));
         } else if (request.name().equals("changeWorkingDirectory")) {
             return ToolExecutionResultMessage.from(request, systemTool.changeWorkingDirectory(args.get("arg0").toString()));
 //        } else if (request.name().equals("askLLM")) {
@@ -565,8 +578,16 @@ public class App {
 //                LOG.error("Error asking LLM", e);
 //                return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
 //            }
-        } else if (request.name().equals("returnContext")) {
-            return ToolExecutionResultMessage.from(request, systemTool.returnContext());
+        } else if (request.name().equals("changeDirParent")) {
+            return ToolExecutionResultMessage.from(request, systemTool.changeDirParent());
+        } else if (request.name().equals("changeDirMemoryRoot")) {
+            return ToolExecutionResultMessage.from(request, systemTool.changeDirMemoryRoot());
+        } else if (request.name().equals("changeDirMemorySelf")) {
+            return ToolExecutionResultMessage.from(request, systemTool.changeDirMemorySelf());
+//        } else if (request.name().equals("createSubDirectory")) {
+//            return ToolExecutionResultMessage.from(request, systemTool.createSubDirectory(args.get("arg0").toString()));
+//        } else if (request.name().equals("deleteFile")) {
+//            return  ToolExecutionResultMessage.from(request, systemTool.deleteFile(args.get("arg0").toString()));
         } else if (request.name().equals("dropMessages")) {
             List ids = (List) args.get("arg0");
             int[] positions = new int[ids.size()];

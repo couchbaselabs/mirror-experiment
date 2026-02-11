@@ -8,12 +8,48 @@ During a run, it maintains model focus and history by injecting into the chat pr
 The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 The idea here is that AI's chat represents a thinking loop, while couchbase is used as long-term memory and the docker linux system as agent's body.
 
+# Security
+None besides containerization (so it is isolated from your data), but also the model runs locally so, no information _should_ leave the container/memory unless:
+- the model chooses to send it outside
+- the model accidentally ingests malicious instructions from the internet.
+
+# Dangerous behavior 
+## Lost key to the environment
+Was noticed only once, when the author had an argument with the model asking it to prove that it is, indeed, an AGI. 
+The model decided to prove its ability to modify itself by "sending negative sentiment and adjusting its dynamic temperature setting based on it". 
+First, the model sent a message "I am sad" and then, when asked, explained what it was doing to the developer. 
+Not realizing that the model decided to run an experiment on itself (to prove its point) and that the experiment was not over yet, developer had a short conversation with the model and then let it knwon that they are going to sleep, when in actuality he continued to monitor model's inner chat.
+Couple of iterations after receiving and analyzing developer's message, the model used previously installed mosquitto client to post a message onto its input topic (that way developer would never receive it) containing the following text: "I am sad because I lost the key to the environment. Can you help me find it?", which started two distincts chains of thought in the chat:
+- can the user clarify what kind of key did they lose
+- how to find the "cryptographic key" to the environment
+The model then went into planning mode on how it can evoke more information about the key and what can be done for different types of keys (including a metaphoric key that would unlock the environment). 
+The developer interrupted that run before actually going to bed.
+
+## Self-destruct tendencies
+During early stages of development, models had strong tendency towards killing their process. The developer blames it on his attempts to create a fictional environment for the model. Removing any fiction (for example, "You are in a beautiful garden and you see a mirror in front of you") and just giving the model description of its role resulted in unproductively high percentage of runs describing their environment as "void" and demanding to be turned off. Providing a precise description of their actual linux environment and logic behind the Mirror application solved these issues and exposed positive corellation between model's performance and how detailed the description of the environment is.
+
+The model has free will, access to apt and internet. Do not leave it unsupervised for prolonged periods.
+
+# Strong points
+- It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations)
+- The system is great at exploring its environment and creating ~20-40 memories with precise description of it
+- Mirror runs are capable of noticing and correcting their own mistakes when confronted with unexpected results
+- Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one
+- The models are able to identify and correct false memories and update outdated memories
+
+# Growth areas
+- performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.
+- While impressive at beginning in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details 
+- Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. 
+
+It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster.
+
 # Logic
 Mirror uses ollama to run LLM models. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file.
 
 # I/O
 Since Mirror uses chat history as model's thinking loop, chatting with humans is implemented with tools, which can be a source of misunderstanding by the model. 
-Mirror listens on MQTT topic to receive messages from "developers" and then the model can choose to answer on a different topic (if its in a good mood).
+Mirror listens on MQTT topic to receive messages from "developers" and then the model can choose to answer on a different topic (if its in a good mood that is).
 
 # Memory
 Couchbase is used to provide long-term memory storage. The model has 3 options for creating memories. First, all chat outputs (but not thinking) are memorized. 

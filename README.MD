@@ -12,9 +12,8 @@ The idea here is that AI's chat represents a thinking loop, while couchbase is u
 Mirror uses ollama to run LLM models. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file.
 
 # I/O
-IO is implemented via mqtt: the model can "think" to "say" something and it will be published onto a pre-configured mqtt output topic. 
-Mirror would also inject into the "thinking loop" any message that it reads from a pre-configured mqtt input topic.
-So... you need an MQTT server to run it. Change the config.yaml file with your specific settings to run Mirror.
+Since Mirror uses chat history as model's thinking loop, chatting with humans is implemented with tools, which can be a source of misunderstanding by the model. 
+Mirror listens on MQTT topic to receive messages from "developers" and then the model can choose to answer on a different topic (if its in a good mood).
 
 # Memory
 Couchbase is used to provide long-term memory storage. The model has 3 options for creating memories. First, all chat outputs (but not thinking) are memorized. 

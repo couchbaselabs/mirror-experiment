@@ -10,6 +10,9 @@ The LLM eventually starts using the chat messages as its short-term memory. It s
 
 The idea here is that information in the AI's chat represents a thinking loop, couchbase is used aslong-term memory and the running in the container code is the agent's "body" with which it manipulates its environment (Ubuntu Linux).
 
+# Potential benefits for CB
+If this results in a useful for customers model runner that improves upon the existing AI tools, models would produce a lot of data that would be stored in Couchbase.
+
 # Security
 None besides containerization (so it is isolated from your data), but also the model runs locally so, no information _should_ leave the container/memory unless:
 - the model chooses to send it outside

@@ -43,6 +43,7 @@ The model has free will, access to apt and internet. Do not leave it unsupervise
 # Strong points
 - It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations)
 - The system is great at exploring its environment and creating ~20-40 memories with precise description of it
+- The system is capable of planning and improving its environment by installing additional packages
 - Mirror runs are capable of noticing and correcting their own mistakes when confronted with unexpected results
 - Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one
 - The models are able to identify and correct false memories and update outdated memories
@@ -51,6 +52,11 @@ The model has free will, access to apt and internet. Do not leave it unsupervise
 - performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.
 - While impressive at beginning in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which would lead to stagnatation.
 - Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. 
+- After successfully exploring their containerized environment, all model runs stagnated in their self-improvement.
+- Many times models would falsely conclude that they:
+  - don't have internet
+  - don't have superuser privileges (or would notice that there is no sudo on the container and assume that)
+  in some cases they would find workarounds like using python or devtree to access the Internet, but in other cases that would lead to stagnation in development.
 
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster.
 

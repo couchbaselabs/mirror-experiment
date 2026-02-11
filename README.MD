@@ -7,15 +7,15 @@ During a run, it maintains model focus and history by injecting into the chat pr
 The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 The idea here is that AI's chat represents a thinking loop, while couchbase is used as long-term memory and the docker linux system as agent's body.
 
-#Logic
+# Logic
 Mirror uses ollama to run LLM models. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file.
 
-#I/O
+# I/O
 IO is implemented via mqtt: the model can "think" to "say" something and it will be published onto a pre-configured mqtt output topic. 
 Mirror would also inject into the "thinking loop" any message that it reads from a pre-configured mqtt input topic.
 So... you need an MQTT server to run it. Change the config.yaml file with your specific settings to run Mirror.
 
-#Memory
+# Memory
 Couchbase is used to provide long-term memory storage. The model has 3 options for creating memories. First, all chat outputs (but not thinking) are memorized. 
 Second, the application provides `memorize` tool and `query` tool is the third option.
 

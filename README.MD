@@ -74,10 +74,17 @@ All memories are immutable. Document ids are generated using `UUID.fromBytes(<te
 The model can choose to use the `recall` tool to fetch 3 memories relevant to a chunk of text it would provide to the tool as question parameter. It also can delete or merge memories.
 Finally, the model has access to `query` tool to run SQL++ queries against its CB scope. It is a relatively new feature and I never seen it do it yet, but I suspect that I am just not generating enough inference cycles in order for a Mirror run to mature enough to start using it.
 
-#Docker
+# Docker
 I HIGHLY recommend to run Mirror in a Docker container: in some iterations it decided to "cleanup resources" and I can see it killing your init process while learning.
 On rare occasions (actually, only once) Mirror got so concerned about resources that they even killed themselves. 
 Obviously, self-destructive tendencies is something that a developer needs to be aware of and also something that needs to be explored, but for now... just run it in a container, pleasee. 
 I even provided a Dockerfile and scripts for that. To use the dockerfile, first build the fatJar with gradle and then build the dockerfile and run it.
 Or just use the `./run.sh` script for a one-shot run or `./loop.sh` script for looped run (for iterative prompt or app development).
 Good luck.
+
+# Low-level
+From the low-level POV, the project is performing multi-point traversals of model's embedding space.
+
+A thinking process is viewed as an evolving array of coordinates in model's embedding space (with optionally different thinking and memory spaces) that encodes its own momentum.
+
+Memories can be viewed as snapshots of that array's evolution that can be used (via autoinjection or deliberate recollection by the model) to re-initialize a traversal or to adjust the one that is currently being performed.

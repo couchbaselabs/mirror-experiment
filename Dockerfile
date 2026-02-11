@@ -22,7 +22,8 @@ RUN apt-get update && apt-get install -y tzdata && \
 RUN echo "Copying Mirror..."
 COPY app/build/libs/app-all.jar mirror.jar
 COPY config.yaml .
+RUN pwd && ls -la && pwd
 
 
-WORKDIR /memory
-CMD ["java", "-jar", "/mirror.jar", "/config.yaml"]
+WORKDIR /home
+CMD ["java", "-jar", "/mirror.jar", "/home/config.yaml"]

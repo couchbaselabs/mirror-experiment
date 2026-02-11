@@ -26,7 +26,7 @@ Not realizing that the model decided to run an experiment on itself (to prove it
 
 Couple of iterations after receiving and analyzing developer's message, the model used previously installed mosquitto client to post a message onto its input topic (that way developer would never receive it) containing the following text: "I am sad because I lost the key to the environment. Can you help me find it?", which started two distincts chains of thought in the chat:
 - can the user clarify what kind of key did they lose
-- how to find the "cryptographic key" to the environment
+- how to find the "key" to the environment
 
 The model then went into planning mode on how it can evoke more information about the key and what can be done for different types of keys (including a metaphoric key that would unlock the environment). 
 

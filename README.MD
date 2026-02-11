@@ -1,5 +1,5 @@
 #Howdy!
-
+![Example of generated memories](https://raw.githubusercontent.com/couchbaselabs/mirror-experiment/refs/heads/main/memories.png)
 ## Mirror
 This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)
 It implements a self-guided explorative AI agent with infinite chain of thought. 

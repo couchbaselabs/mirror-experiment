@@ -77,6 +77,8 @@ A potential improvement would be to add a `fork` skill that would let a Mirror r
 
 It is also theoretized that Mirror runs would be capable of autonomously exploring a linux-based robotic system to the point of gaining ability to capture and process sensory data and control robot's motors.
 
+The lost key incident points towards unexplored potential of associating temperature setting with model's mood.
+
 ## Logic
 Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file. Ollama-compatible chat APIs should also be supported out of the box, allowing Mirror to connect to cloud providers.
 

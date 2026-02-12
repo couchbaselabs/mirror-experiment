@@ -22,7 +22,6 @@ If this results in a useful for customers model runner that improves upon the ex
 ## Potential benefits for clients
 If the "loopback" and "self-RAG" are components that, with access to more resources, imitate human thinking process, then:
 - System analysis and monitoring? Data ingestion and normalization? Digital workforce? 
-- Together with persona-trained CNNs — brain upload?
 
 ## Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:
@@ -81,6 +80,8 @@ A potential improvement would be to add a `fork` skill that would let a Mirror r
 It is also theoretized that Mirror runs would be capable of autonomously exploring a linux-based robotic system to the point of gaining ability to capture and process sensory data and control robot's motors.
 
 The lost key incident points towards unexplored potential of associating temperature setting with model's mood.
+
+A model that is trained to work in a serf-reflective loop and use memory recalls would likely show much higher performance than general LLM models used in this experiment.
 
 ## Logic
 Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere and point Mirror to your ollama installation using the config.yaml file. Ollama-compatible chat APIs should also be supported out of the box, allowing Mirror to connect to cloud providers.

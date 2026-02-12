@@ -54,7 +54,7 @@ During early stages of development, models had strong tendency towards killing t
 
 ## Strong points
 - It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations)
-- The system is great at exploring its environment and creating ~20-40 memories with precise description of it
+- The system is great at exploring its environment and creating ~20-40 memories with precise description of the environment and the exploration process.
 - The system is capable of planning and improving its environment by installing additional packages
 - Mirror runs are capable of noticing and correcting their own mistakes when confronted with unexpected results
 - Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one

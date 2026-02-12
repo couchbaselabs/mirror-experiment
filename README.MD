@@ -122,7 +122,7 @@ Good luck.
 ## Low-level
 From the low-level POV, the project is performing multi-point traversals of an LLM model embedding space.
 
-A thinking process is viewed as an evolving array of coordinates in model's embedding space (with optionally different thinking and memory spaces) that encodes its own momentum.
+A thinking process is viewed as an evolving array of vectors in model's embedding space (with optionally different thinking and memory spaces) that encodes its own momentum.
 
 Memories can be viewed as snapshots of that array's evolution that can be used (via autoinjection or deliberate recollection by the model) to re-initialize a traversal or to adjust the one that is currently being performed.
 

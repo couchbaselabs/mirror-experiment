@@ -1,4 +1,4 @@
-> Can machines think?
+ > Can machines think?
 
 ![Example of generated memories](https://github.com/couchbaselabs/mirror-experiment/blob/main/memories.png?raw=true)
 
@@ -26,7 +26,7 @@ If the "loopback" and "self-RAG" are components that, with access to more resour
 ## Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:
 - the model chooses to send it outside
-- the model accidentally ingests malicious instructions from the internet.
+- the model accidentally ingests malicious instructions from the internet. (Although, this is the first known to the developer AI implementation that implements separation of data from instructions which may aleviate this problem alltogether).
 
 ## Dangerous behavior 
 The experiment intentionally had (very) limited resources in order to slow the models down and avoid runaway rogue AI scenario. 
@@ -59,6 +59,7 @@ During early stages of development, models had strong tendency towards killing t
 - Mirror runs are capable of autonomously noticing and correcting their own mistakes when confronted with unexpected results
 - Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one
 - The models are able to identify and correct false memories and update outdated memories
+- Because all data is ingested by the model as tool execution results, a strong separation between model's own thouhts and data is present at least at the moment when potentially malicious data is introduced into the system. While not confirmed, theoretically this may solve the prompt injection issue that many contemporary AI projects suffer from.
 
 ## Growth areas
 - performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.

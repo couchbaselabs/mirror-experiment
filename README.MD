@@ -64,7 +64,7 @@ During early stages of development, models had strong tendency towards killing t
 - performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.
 - While impressive at beginning in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which would lead to stagnatation.
 - Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. 
-- After successfully exploring their containerized environment, all model runs stagnated in their self-improvement.
+- After successfully exploring their containerized environment, all model runs appeared to stagnate in their self-improvement.
 - Although in some cases they would find workarounds like using python or devtree to access the Internet, many times models would stagnate due to falsely concluding that they:
   - don't have internet
   - don't have superuser privileges (or would notice that there is no sudo on the container and assume that)

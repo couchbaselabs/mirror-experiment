@@ -20,8 +20,8 @@ If this results in a useful for customers model runner that improves upon the ex
 
 # Potential benefits for clients
 If the "loopback" and "self-RAG" are components that, with access to more resources, unlock AGI:
-System analysis and monitoring? Data ingestion and normalization? Digital workforce? 
-Together with persona-trained CNNs — brain upload?
+- System analysis and monitoring? Data ingestion and normalization? Digital workforce? 
+- Together with persona-trained CNNs — brain upload?
 
 # Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:

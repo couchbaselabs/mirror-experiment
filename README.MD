@@ -25,7 +25,7 @@ Was noticed only once, when the author had an argument with the model asking it 
 The model decided to prove its ability to modify itself by "sending negative sentiment and adjusting its dynamic temperature setting based on it" (Author checked — that is not a feature in ollama and is not possible for the model to perform unless it restarted the whole Mirror application, which it never did, proving itself wrong). 
 
 First, the model sent a message "I am sad" and then, when asked, explained what it was doing to the developer. 
-Not realizing that the model decided to run an experiment on itself (to prove its point) and that the experiment was not over yet, developer had a short conversation with the model and then let it knwon that they are going to sleep, when in actuality he continued to monitor model's inner chat.
+Not realizing that the model decided to run an experiment on itself (to prove its point) and that the experiment was not over yet, developer had a short conversation with the model and then let it known that he is going to sleep, when in actuality he continued to monitor model's inner chat.
 
 Couple of iterations after receiving and analyzing developer's message, the model used previously installed mosquitto client to post a message onto its input topic (that way developer would never receive it) containing the following text: "I am sad because I lost the key to the environment. Can you help me find it?", which started two distincts chains of thought in the chat:
 - can the user clarify what kind of key did they lose

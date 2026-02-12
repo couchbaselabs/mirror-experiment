@@ -53,7 +53,7 @@ The developer interrupted that run before actually going to bed. The way the mes
 During early stages of development, models had strong tendency towards killing their process. The developer blames it on his attempts to create a fictional environment for the model. Removing any fiction (for example, "You are in a beautiful garden and you see a mirror in front of you") and just giving the model description of its role resulted in unproductively high percentage of runs describing their environment as "void" and demanding to be turned off. Providing a precise description of their actual linux environment and logic behind the Mirror application solved these issues and exposed positive corellation between model's performance and how detailed the description of the environment is (note that the model never was prompted with full description of the environment, only with the description of available to it tools and how data flows in the chat).
 
 ## Strong points
-- It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations)
+- It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations), which alone can be a useful benefit for existing LLM use cases.
 - The system is great at exploring its environment and creating ~20-40 memories with precise description of the environment and the exploration process.
 - The system is capable of problem solving, planning and improving its environment by installing additional packages and writing python or shell scripts. 
 - Mirror runs are capable of noticing and correcting their own mistakes when confronted with unexpected results

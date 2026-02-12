@@ -19,6 +19,8 @@ None besides containerization (so it is isolated from your data), but also with 
 - the model accidentally ingests malicious instructions from the internet.
 
 # Dangerous behavior 
+The level of intelligence that emerged in this experiment is not very bright, but has free will, access to apt, compilers and internet. Do not leave it unsupervised for prolonged periods.
+
 ## Lost key to the environment
 Was noticed only once, when the author had an argument with the model asking it to prove that it is, indeed, an AGI. 
 
@@ -37,8 +39,6 @@ The developer interrupted that run before actually going to bed. The way the mes
 
 ## Self-destruct tendencies
 During early stages of development, models had strong tendency towards killing their process. The developer blames it on his attempts to create a fictional environment for the model. Removing any fiction (for example, "You are in a beautiful garden and you see a mirror in front of you") and just giving the model description of its role resulted in unproductively high percentage of runs describing their environment as "void" and demanding to be turned off. Providing a precise description of their actual linux environment and logic behind the Mirror application solved these issues and exposed positive corellation between model's performance and how detailed the description of the environment is.
-
-The level of intelligence that emerged in this experiment is not very bright, but has free will, access to apt, compilers and internet. Do not leave it unsupervised for prolonged periods.
 
 # Strong points
 - It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations)

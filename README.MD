@@ -14,7 +14,7 @@ The idea here is that information in the AI's chat represents a thinking loop, c
 If this results in a useful for customers model runner that improves upon the existing AI tools, models would produce a lot of true and valid memories that would be stored in Couchbase and can be used for further analysis. 
 
 # Security
-None besides containerization (so it is isolated from your data), but also the model runs locally so, no information _should_ leave the container/memory unless:
+None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:
 - the model chooses to send it outside
 - the model accidentally ingests malicious instructions from the internet.
 

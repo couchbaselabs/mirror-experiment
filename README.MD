@@ -70,6 +70,7 @@ During early stages of development, models had strong tendency towards killing t
   - don't have internet
   - don't have superuser privileges (or would notice that there is no sudo on the container and assume that)
 
+### Potential exploration avenues
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster. 
 A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process that has access to the same memory database, allowing models to have branching chains of thought.
 

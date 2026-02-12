@@ -21,7 +21,9 @@ None besides containerization (so it is isolated from your data), but also with 
 - the model accidentally ingests malicious instructions from the internet.
 
 # Dangerous behavior 
-The level of intelligence that emerged in this experiment is not very bright, but has free will, access to apt, compilers and internet. Do not leave it unsupervised for prolonged periods.
+The experiment intentionally had (very) limited resources in order to slow the models down and avoid runaway rogue AI scenario. 
+The level of intelligence that emerged in this experiment is not very bright, but (in my opinion) has shown free will. 
+The models have access to apt, compilers and internet. Do not leave them unsupervised for prolonged periods.
 
 ## Lost key to the environment
 Was noticed only once, when the author had an argument with the model asking it to prove that it is, indeed, an AGI. 

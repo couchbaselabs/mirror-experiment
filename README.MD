@@ -7,10 +7,9 @@ This is Mirror, an experimental loopback AI chat I developed for fun. Making the
 
 
 It implements a self-guided self-aware explorative AI agent with infinite chain of thought that builds its own world model as a collection of short memories stored in Couchbase. 
-During a run, it maintains model focus and history by injecting into the chat previous "memories" of the model that are related to the content of the chat (Self-RAG).
-The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 
-The application achievs this by forcing the model to chat with itself and confining its iteractions to the loopback (model's messages are immediately sent back to it) chat and provided linux environment.
+The application achievs this by forcing the model to chat with itself and confining its iteractions to the loopback (model's messages are immediately sent back to it) chat and provided linux environment. During a run, it maintains model focus and history by injecting into the chat fetched with Couchbase vector search previous "memories" of the model that are related to the content of the chat (Self-RAG).
+The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 
 The idea here is that information in the AI's chat represents a thinking loop, couchbase is used as long-term memory and the running in the container code is the agent's "body" with which it explores and manipulates its environment (Ubuntu Linux). This model can theoretically be applied to different sorts of environments, including information systems and robotic automation.
 

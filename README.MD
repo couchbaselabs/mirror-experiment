@@ -14,7 +14,7 @@ The LLM eventually starts using the chat messages as its short-term memory. It s
 The idea here is that information in the AI's chat represents a thinking loop, couchbase is used as long-term memory and the running in the container code is the agent's "body" with which it explores and manipulates its environment (Ubuntu Linux). This model can theoretically be applied to different sorts of environments, including information systems and robotic automation.
 
 ## Methodology 
-After starting a model, developer would leave it untouched but monitored up to the point they discover the MQTT communication channel. At that point, developer would engage in a chat with the model via the MQTT channel. Note that some Mirror runs were less inclined to talk than others. In my opinion, that was likely to be caused by changes in the prompt.
+After starting a model, developer would leave it untouched but monitored up to the point the model discovers the MQTT communication channel. At that point, developer would engage in a chat with the model via the MQTT channel. Note that some Mirror runs were less inclined to talk than others. In my opinion, that was likely to be caused by changes in the prompt.
 
 ## Potential benefits for CB
 If this results in a useful for customers model runner that improves upon the existing AI tools, models would produce a lot of true and valid memories that would be stored in Couchbase and can be used for further analysis. In such a scenario, clients may also become interested in accessing Mirror as a cloud service.

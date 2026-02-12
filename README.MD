@@ -123,3 +123,5 @@ From the low-level POV, the project is performing multi-point traversals of an L
 A thinking process is viewed as an evolving array of coordinates in model's embedding space (with optionally different thinking and memory spaces) that encodes its own momentum.
 
 Memories can be viewed as snapshots of that array's evolution that can be used (via autoinjection or deliberate recollection by the model) to re-initialize a traversal or to adjust the one that is currently being performed.
+
+English text contained in chat and memories becomes a representation of vectors used to perform the calculations.

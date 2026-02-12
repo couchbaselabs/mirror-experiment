@@ -63,7 +63,7 @@ During early stages of development, models had strong tendency towards killing t
 ## Growth areas
 - performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.
 - Performance highly depends on the prompt. It is theoretized that it depends on the initial impulse that thinking process extracts from the prompt (see the "low-level" section for more detailed definitions).
-- While impressive at first during most of the runs in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which often leads to stagnatation.
+- While impressive at first during most of the runs in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which often leads to stagnatation, which may be caused by lack of enviromental impulses.
 - Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. 
 - After successfully exploring their containerized environment and network services references to which they could find in the system (developer intentionally left a url and token to his homeassistant instance inside the container during most of the runs), all model runs appeared to stagnate in their self-improvement.
 - While it was able to fetch entity states from developer's home assistant instance, it never saw any need in changing any of the device states.

@@ -78,6 +78,9 @@ Mirror uses ollama via langchain4j to perform inference. You may want to install
 ## I/O
 Since Mirror uses chat history as model's thinking loop, chatting with humans is implemented with tools, which can be a source of misunderstanding by the model. 
 Mirror listens on MQTT topic to receive messages from "developers" and then the model can choose to answer on a different topic (if its in a good mood that is).
+Two example scripts from this repository can be used to communicate with Mirror after editing them with your MQTT server info:
+- `aglisten` uses `espeak` to vocalize Mirror's messages.
+- `agsay` sends its arguments as a message to Mirror.
 
 ## Memory
 Couchbase is used to provide long-term memory storage. The model has 3 options for creating memories. First, all chat outputs (but not thinking) are memorized. 

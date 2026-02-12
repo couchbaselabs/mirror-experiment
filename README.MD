@@ -125,3 +125,6 @@ A thinking process is viewed as an evolving array of coordinates in model's embe
 Memories can be viewed as snapshots of that array's evolution that can be used (via autoinjection or deliberate recollection by the model) to re-initialize a traversal or to adjust the one that is currently being performed.
 
 English text contained in chat and memories becomes a representation of vectors used to perform the calculations.
+
+# Usage
+To start, Mirror expects a path to config yaml file (see `config.sample.yaml`) as its first parameter.

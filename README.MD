@@ -72,6 +72,8 @@ During early stages of development, models had strong tendency towards killing t
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster. 
 A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process that has access to the same memory database, allowing models to have branching chains of thought.
 
+It is also theoretized that Mirror runs would be capable of autonomously exploring a linux-based robotic system to the point of gaining ability to capture sensory data and control robot's motors.
+
 ## Logic
 Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file. Ollama-compatible chat APIs should also be supported out of the box, allowing Mirror to connect to cloud providers.
 

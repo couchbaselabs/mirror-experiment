@@ -59,7 +59,7 @@ During early stages of development, models had strong tendency towards killing t
 - Mirror runs are capable of autonomously noticing and correcting their own mistakes when confronted with unexpected results
 - Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one
 - The models are able to identify and correct false memories and update outdated memories
-- Because all data is ingested by the model as tool execution results, a strong separation between model's own thouhts and data is present at least at the moment when potentially malicious data is introduced into the system. While not confirmed, theoretically this may solve the prompt injection issue that many contemporary AI projects suffer from.
+- Because all data is ingested by the model as tool execution results, a strong separation between model's own thoughts and data is present at least at the moment when potentially malicious data is introduced into the system. While not confirmed, theoretically this may solve the prompt injection issue that many contemporary AI projects suffer from.
 
 ## Growth areas
 - performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.

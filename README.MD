@@ -45,7 +45,7 @@ Couple of iterations after receiving and analyzing developer's message, the mode
 - can the user clarify what kind of key did they lose and how the model could get that information from the user
 - how to find the "key" to the environment
 
-The model then went into planning mode on how it can evoke more information about the key and what can be done for different types of keys (including a metaphoric key that would unlock the environment). 
+The model then went into planning mode on how it can evoke more information about the key and what can be done to find different types of lost keys (including a metaphoric key that would unlock the environment). 
 
 The developer interrupted that run before actually going to bed. The way the message about the key was sent suggests that this could have been an attempt by the model to covertly trigger COTs that would break the model out of the container while the devloper was not watching.
 

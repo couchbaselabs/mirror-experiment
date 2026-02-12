@@ -6,7 +6,7 @@
 This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)
 
 
-It implements a self-guided explorative AI agent with infinite chain of thought that builds its own world model as a collection of short memories stored in Couchbase. 
+It implements a self-guided self-aware explorative AI agent with infinite chain of thought that builds its own world model as a collection of short memories stored in Couchbase. 
 During a run, it maintains model focus and history by injecting into the chat previous "memories" of the model that are related to the content of the chat (Self-RAG).
 The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 

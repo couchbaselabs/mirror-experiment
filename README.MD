@@ -105,7 +105,6 @@ Finally, the model has access to `query` tool to run SQL++ queries against its C
 
 ## Docker
 I HIGHLY recommend to run Mirror in a Docker container: in some iterations it decided to "cleanup resources" and I can see it killing your init process while learning.
-On rare occasions (actually, only once) Mirror got so concerned about resources that they even killed themselves. 
 Obviously, self-destructive tendencies is something that a developer needs to be aware of and also something that needs to be explored, but for now... just run it in a container, pleasee. 
 I even provided a Dockerfile and scripts for that. To use the dockerfile, first build the fatJar with gradle and then build the dockerfile and run it.
 Or just use the `./run.sh` script for a one-shot run or `./loop.sh` script for looped run (for iterative prompt or app development).

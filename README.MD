@@ -1,7 +1,5 @@
 > Can machines think?
 
-— AMT
-
 ![Example of generated memories](https://github.com/couchbaselabs/mirror-experiment/blob/main/memories.png?raw=true)
 
 ## Mirror

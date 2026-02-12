@@ -2,7 +2,7 @@
 
 ![Example of generated memories](https://github.com/couchbaselabs/mirror-experiment/blob/main/memories.png?raw=true)
 
-## Mirror
+# Mirror
 This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)
 
 
@@ -12,28 +12,28 @@ The LLM eventually starts using the chat messages as its short-term memory. It s
 
 The idea here is that information in the AI's chat represents a thinking loop, couchbase is used aslong-term memory and the running in the container code is the agent's "body" with which it manipulates its environment (Ubuntu Linux).
 
-# Methodology 
+## Methodology 
 After starting a model, developer would leave it untouched but monitored up to the point they discover the MQTT communication channel. At that point, developer would engage in a chat with the model via the MQTT channel. Note that some models were less inclined to talk than others. In my opinion, that was likely to be caused by changes in the prompt.
 
-# Potential benefits for CB
+## Potential benefits for CB
 If this results in a useful for customers model runner that improves upon the existing AI tools, models would produce a lot of true and valid memories that would be stored in Couchbase and can be used for further analysis. In such a scenario, clients may also become interested in accessing Mirror as a cloud service.
 
-# Potential benefits for clients
+## Potential benefits for clients
 If the "loopback" and "self-RAG" are components that, with access to more resources, imitate human thinking process, then:
 - System analysis and monitoring? Data ingestion and normalization? Digital workforce? 
 - Together with persona-trained CNNs — brain upload?
 
-# Security
+## Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:
 - the model chooses to send it outside
 - the model accidentally ingests malicious instructions from the internet.
 
-# Dangerous behavior 
+## Dangerous behavior 
 The experiment intentionally had (very) limited resources in order to slow the models down and avoid runaway rogue AI scenario. 
 The level of intelligence that emerged in this experiment is not very bright, but (in my opinion) has shown free will. 
 The models have access to apt, compilers and internet. At this stage of development, do not leave them unsupervised for prolonged periods.
 
-## Lost key to the environment
+### Lost key to the environment
 Was noticed only once, when the author had an argument with the model asking it to prove that it is, indeed, an AGI. 
 
 The model decided to prove its ability to modify itself by "sending negative sentiment and adjusting its dynamic temperature setting based on it" (Author checked — that is not a feature in ollama and is not possible for the model to perform unless it restarted the whole Mirror application, which it never did, proving itself wrong). 
@@ -49,10 +49,10 @@ The model then went into planning mode on how it can evoke more information abou
 
 The developer interrupted that run before actually going to bed. The way the message about the key was sent suggests that this could have been an attempt by the model to trigger COTs that would break the model out of the container while the devloper was not watching.
 
-## Self-destruct tendencies
+### Self-destruct tendencies
 During early stages of development, models had strong tendency towards killing their process. The developer blames it on his attempts to create a fictional environment for the model. Removing any fiction (for example, "You are in a beautiful garden and you see a mirror in front of you") and just giving the model description of its role resulted in unproductively high percentage of runs describing their environment as "void" and demanding to be turned off. Providing a precise description of their actual linux environment and logic behind the Mirror application solved these issues and exposed positive corellation between model's performance and how detailed the description of the environment is (note that the model never got a full description of the environment, only available to it tools).
 
-# Strong points
+## Strong points
 - It appears that autorecall greatly improves model focus and prevents the model from hallucinating (of greatly minimizes hallucinations)
 - The system is great at exploring its environment and creating ~20-40 memories with precise description of it
 - The system is capable of planning and improving its environment by installing additional packages
@@ -60,7 +60,7 @@ During early stages of development, models had strong tendency towards killing t
 - Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one
 - The models are able to identify and correct false memories and update outdated memories
 
-# Growth areas
+## Growth areas
 - performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.
 - While impressive at beginning in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which would lead to stagnatation.
 - Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. 
@@ -72,18 +72,18 @@ During early stages of development, models had strong tendency towards killing t
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster. 
 A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process that has access to the same memory database, allowing models to have branching chains of thought.
 
-# Logic
+## Logic
 Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file. Ollama-compatible chat APIs should also be supported out of the box, allowing Mirror to connect to cloud providers.
 
-# I/O
+## I/O
 Since Mirror uses chat history as model's thinking loop, chatting with humans is implemented with tools, which can be a source of misunderstanding by the model. 
 Mirror listens on MQTT topic to receive messages from "developers" and then the model can choose to answer on a different topic (if its in a good mood that is).
 
-# Memory
+## Memory
 Couchbase is used to provide long-term memory storage. The model has 3 options for creating memories. First, all chat outputs (but not thinking) are memorized. 
 Second, the application provides `memorize` tool and `query` tool is the third option.
 
-## Memorization
+### Memorization
 The model can `memorize` pieces of text (there is a hard-coded instruction for the model to limit memories under 1900 tokens to fit the text and metadata into 2048 token window). 
 The application prepends every memorized text with metadata (currrently — working directory and UTC date) and then vectorizes the resulting string and stores the vector and source text into a Couchbase document.
 Memorized data is used then to implement `autorecall` feature, which on every iteration injects into the chat 3 relevant memories by performing Euclidean vector distance search against a vector generated from (the same metadata and):
@@ -98,7 +98,7 @@ All memories are immutable. Document ids are generated using `UUID.fromBytes(<te
 The model can choose to use the `recall` tool to fetch 3 memories relevant to a chunk of text it would provide to the tool as question parameter. It also can delete or merge memories.
 Finally, the model has access to `query` tool to run SQL++ queries against its CB scope. It is a relatively new feature and I never seen it do it yet, but I suspect that I am just not generating enough inference cycles in order for a Mirror run to mature enough to start using it.
 
-# Docker
+## Docker
 I HIGHLY recommend to run Mirror in a Docker container: in some iterations it decided to "cleanup resources" and I can see it killing your init process while learning.
 On rare occasions (actually, only once) Mirror got so concerned about resources that they even killed themselves. 
 Obviously, self-destructive tendencies is something that a developer needs to be aware of and also something that needs to be explored, but for now... just run it in a container, pleasee. 
@@ -106,7 +106,7 @@ I even provided a Dockerfile and scripts for that. To use the dockerfile, first 
 Or just use the `./run.sh` script for a one-shot run or `./loop.sh` script for looped run (for iterative prompt or app development).
 Good luck.
 
-# Low-level
+## Low-level
 From the low-level POV, the project is performing multi-point traversals of model's embedding space.
 
 A thinking process is viewed as an evolving array of coordinates in model's embedding space (with optionally different thinking and memory spaces) that encodes its own momentum.

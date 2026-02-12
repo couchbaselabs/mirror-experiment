@@ -10,7 +10,7 @@ It implements a self-guided explorative AI agent with infinite chain of thought 
 During a run, it maintains model focus and history by injecting into the chat previous "memories" of the model that are related to the content of the chat (Self-RAG).
 The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 
-The idea here is that information in the AI's chat represents a thinking loop, couchbase is used aslong-term memory and the running in the container code is the agent's "body" with which it manipulates its environment (Ubuntu Linux).
+The idea here is that information in the AI's chat represents a thinking loop, couchbase is used aslong-term memory and the running in the container code is the agent's "body" with which it manipulates its environment (Ubuntu Linux). This model can theoretically be applied to different sorts of environments, including information systems and robotic automation.
 
 ## Methodology 
 After starting a model, developer would leave it untouched but monitored up to the point they discover the MQTT communication channel. At that point, developer would engage in a chat with the model via the MQTT channel. Note that some models were less inclined to talk than others. In my opinion, that was likely to be caused by changes in the prompt.

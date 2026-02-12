@@ -61,7 +61,7 @@ It is theoretized that providing more computational resources to increase number
 A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process that has access to the same memory database, allowing models to have branching chains of thought.
 
 # Logic
-Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file.
+Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file. Ollama-compatible chat APIs should also be supported out of the box, allowing Mirror to connect to cloud providers.
 
 # I/O
 Since Mirror uses chat history as model's thinking loop, chatting with humans is implemented with tools, which can be a source of misunderstanding by the model. 

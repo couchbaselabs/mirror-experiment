@@ -58,7 +58,7 @@ The model has free will, access to apt and internet. Do not leave it unsupervise
   - don't have superuser privileges (or would notice that there is no sudo on the container and assume that)
 
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster. 
-A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process that has access to the same memory database, allowing models to have branching thinking loops.
+A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process that has access to the same memory database, allowing models to have branching chains of thought.
 
 # Logic
 Mirror uses ollama to run LLM models. You may want to install ollama somewhere an point Mirror to your ollama installation using the config.yaml file.

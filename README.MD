@@ -130,3 +130,6 @@ English text contained in chat and memories becomes a representation of vectors 
 
 # Usage
 To start, Mirror expects a path to config yaml file (see `config.sample.yaml`) as its first parameter.
+
+# References
+https://arxiv.org/abs/2310.11511 — Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection

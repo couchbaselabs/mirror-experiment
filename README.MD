@@ -19,7 +19,9 @@ After starting a model, developer would leave it untouched but monitored up to t
 If this results in a useful for customers model runner that improves upon the existing AI tools, models would produce a lot of true and valid memories that would be stored in Couchbase and can be used for further analysis. In such a scenario, clients may also become interested in accessing Mirror as a cloud service.
 
 # Potential benefits for clients
-System analysis and monitoring? Data ingestion and normalization? Digital workforce?
+If the "loopback" and "self-RAG" are components that, with access to more resources, unlock AGI:
+System analysis and monitoring? Data ingestion and normalization? Digital workforce? 
+Together with persona-trained CNNs — brain upload?
 
 # Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:

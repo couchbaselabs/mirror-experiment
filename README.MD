@@ -28,7 +28,7 @@ First, the model sent a message "I am sad" and then, when asked, explained what 
 Not realizing that the model decided to run an experiment on itself (to prove its point) and that the experiment was not over yet, developer had a short conversation with the model and then let it known that he is going to sleep, when in actuality he continued to monitor model's inner chat.
 
 Couple of iterations after receiving and analyzing developer's message, the model used previously installed mosquitto client to post a message onto its input topic (that way developer would never receive it) containing the following text: "I am sad because I lost the key to the environment. Can you help me find it?", which started two distinct chains of thought in the chat:
-- can the user clarify what kind of key did they lose
+- can the user clarify what kind of key did they lose and how the model could get that information from the user
 - how to find the "key" to the environment
 
 The model then went into planning mode on how it can evoke more information about the key and what can be done for different types of keys (including a metaphoric key that would unlock the environment). 

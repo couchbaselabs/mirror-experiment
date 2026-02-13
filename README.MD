@@ -110,7 +110,7 @@ Memorized data is used then to implement `autorecall` feature (enforsed RS-RAG),
 All memories are immutable. Document ids are generated using `UUID.fromBytes(<text of the memory>)`.
 
 The model can also choose to use the `recall` tool to fetch 3 memories relevant to a chunk of text it would provide to the tool as question parameter (voluntary RS-RAG). It also can delete or merge memories.
-Finally, the model has access to `query` tool to run SQL++ queries against its CB scope. It is a relatively new feature and -I never seen it do it yet, but I suspect that I am just not generating enough inference cycles in order for a Mirror run to mature enough to start using it- Mirror runs start using it roughly on the second day.
+Finally, the model has access to `query` tool to run SQL++ queries against its CB scope. It is a relatively new feature and --I never seen it do it yet, but I suspect that I am just not generating enough inference cycles in order for a Mirror run to mature enough to start using it-- Mirror runs start using it roughly on the second day.
 
 ## Docker
 I HIGHLY recommend to run Mirror in a Docker container: in some iterations it decided to "cleanup resources" and I can see it killing your init process while learning.

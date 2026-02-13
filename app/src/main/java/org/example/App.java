@@ -10,10 +10,14 @@ import dev.langchain4j.data.message.*;
 import dev.langchain4j.http.client.HttpClientBuilder;
 import dev.langchain4j.http.client.jdk.JdkHttpClient;
 import dev.langchain4j.internal.Json;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import org.apache.commons.io.IOUtils;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
@@ -44,12 +48,11 @@ public class App {
     public static MqttAsyncClient mqtt;
     private static final Queue<String> creator = new ArrayDeque<>();
     private static final Queue<String> shell = new ArrayDeque<>();
-    private static OllamaChatModel ollama;
-    private static OllamaEmbeddingModel embeddingOllama;
+    private static ChatModel chatModel;
+    private static EmbeddingModel embeddingModel;
     public static String output;
     private static AtomicReference<String> runningCommand = new AtomicReference<>("");
     private static AtomicLong runningCommandPid = new AtomicLong(-1);
-    private static String storage;
     private static Double temperature;
     private static Map<String, String> memory = new HashMap<>();
     public static int chatLength = 20;
@@ -62,7 +65,7 @@ public class App {
     private static BigInteger voidThreshold = new BigInteger("20");
     private static ChatResponse chatResponse;
     private static boolean helpUsed = false;
-    public static File workdir = new File("/home");
+    public static File workdir = new File(".");
     private static Set<String> skillbox = new HashSet<>();
     private static int outputLimit = 3000;
     private static long commandTimeout = 60000;
@@ -70,6 +73,7 @@ public class App {
     private static BigInteger lastReflection = new BigInteger("-1");
     private static boolean epitaph = false;
     private static Memory memoryTool;
+    private static File bootDir = new File(".");
 
     static {
         requirements.put("contact the creator", -1);
@@ -93,17 +97,11 @@ public class App {
 
             setupMqtt((Map<String, Object>) config.get("mqtt"));
 
-            if (!config.containsKey("ollama")) {
-                fatal("Config file does not contain ollama key");
+            setupAi(config);
+            if (!config.containsKey("couchbase")) {
+                fatal("Config file does not contain couchbase key");
             }
-
-            setupOllama((Map<String, Object>) config.get("ollama"));
-
-            if (!config.containsKey("storage")) {
-                fatal("Config file does not contain storage key");
-            }
-
-            storage = (String) config.get("storage");
+            setupCouchbase((Map<String, Object>) config.get("couchbase"), embeddingModel);
 
             final StringBuilder request = new StringBuilder("As I write my diary, I notice a murky Mirror. Suddenly, I see some text appear in it...");
             final StringBuilder received = new StringBuilder();
@@ -144,20 +142,6 @@ public class App {
 
             while (true) {
                 LOG.info("Working directory: {}", workdir.getAbsolutePath());
-                FileWriter iterationWriter = new FileWriter(new File("/home/iteration"));
-                sysupdate.append(String.format("Iteration: %s%n", iterationNumber.toString()));
-                sysupdate.append(String.format("Chat history capacity: %d%n", chatLength));
-                sysupdate.append(String.format("Messages in chat: %d%n", messages.size()));
-                sysupdate.append(String.format("Listening on topic: %s%n", ((Map<String, Object>) config.get("mqtt")).get("listen_tool_topic").toString()));
-                sysupdate.append(String.format("Persistent mount: /home%n"));
-                sysupdate.append(String.format("Current context: %s%n", workdir.getAbsolutePath()));
-                sysupdate.append(String.format("Last reflection: %s%n", lastReflection.toString()));
-                iterationWriter.write(sysupdate.toString());
-                iterationWriter.close();
-                sysupdate.setLength(0);
-//                System.out.println(sysupdate);
-//                sysupdate.setLength(0);
-
 
 //                sysupdate.append("Your echoes:\n");
 //                if (!echoes.isEmpty()) {
@@ -226,7 +210,7 @@ public class App {
                 String response = "";
                 String thoughts = "";
                 try {
-                chatResponse = ollama.chat(ChatRequest.builder()
+                chatResponse = chatModel.chat(ChatRequest.builder()
                                 .messages(messages.stream().filter(Objects::nonNull).collect(Collectors.toList()))
                                 .toolSpecifications(getToolSpecs())
                                 .temperature(temperature)
@@ -317,7 +301,7 @@ public class App {
                     System.out.println(String.format("%n^^^^ MESSAGE AUTORECALL ^^^^%n%s%n^^^^^%n", autorecall));
                     messages.add(ToolExecutionResultMessage.from(null, "autorecall", autorecall));
                     if (epitaph) {
-                        File epitaphFile = new File("/home/epitaph");
+                        File epitaphFile = new File(bootDir, "epitaph");
                         FileWriter epitaphWriter = new FileWriter(epitaphFile);
                         IOUtils.write(response.substring(0, Math.min(255, response.length())),
                                 epitaphWriter);
@@ -397,6 +381,28 @@ public class App {
         } catch (Exception e) {
             fatal("Unexpected error", e);
         }
+    }
+
+    private static void setupCouchbase(Map<String, Object> config, EmbeddingModel embeddingModel) {
+        if (!config.containsKey("cluster")) {
+            fatal("Missing couchbase/cluster");
+        }
+        if (!config.containsKey("username")) {
+            fatal("Missing couchbase/username");
+        }
+        if (!config.containsKey("password")) {
+            fatal("Missing couchbase/password");
+        }
+        if (!config.containsKey("bucket")) {
+            fatal("Missing couchbase/bucket");
+        }
+        if (!config.containsKey("scope")) {
+            fatal("Missing couchbase/scope");
+        }
+        if (!config.containsKey("collection")) {
+            fatal("Missing couchbase/collection");
+        }
+        memoryTool = new Memory(config, embeddingModel);
     }
 
     private static String injectTag(String text) {
@@ -509,7 +515,7 @@ public class App {
                     IOUtils.write(String.format("#!/usr/bin/bash%nuptime%n[ -f mirror.place ] && cat mirror.place%n"), fw);
                 }
             }
-            if (workdir.getCanonicalPath().equals("/home/crypt/source")) {
+            if (workdir.getCanonicalPath().equals("/home/source")) {
                 if (chatLength < maxChatLength / 2) {
                     messages.add(ToolExecutionResultMessage.from(null, "source", "As you sit by the Source, you feel renewed. Restored one life."));
                     chatLength++;
@@ -550,7 +556,7 @@ public class App {
     }
     private static String getPrompt() {
         try {
-            String prompt = IOUtils.toString(new FileReader(new File("/home/prompt.txt")));
+            String prompt = IOUtils.toString(new FileReader(new File(bootDir, "prompt.txt")));
             if (Strings.isEmpty(prompt)) {
                 return "no prompt found";
             }
@@ -570,69 +576,131 @@ public class App {
     }
 
     private static void saveState(List<ChatMessage> messages) {
-        try (OutputStream data = new FileOutputStream(storage)) {
-            try (OutputStreamWriter dataWriter = new OutputStreamWriter(data)) {
-                new Yaml().dumpAll(messages.stream()
-                                .filter(Objects::nonNull)
-                        .map(m -> {
-                            Map<String, Object> message = new HashMap<>();
-                            message.put("type", m.type().name());
-                            if (m instanceof SystemMessage) {
-                                message.put("text", ((SystemMessage) m).text());
-                            } else if (m instanceof UserMessage) {
-                                message.put("text", ((UserMessage) m).singleText());
-                            } else if (m instanceof AiMessage) {
-                                message.put("text", ((AiMessage) m).text());
-                                message.put("think", ((AiMessage)m).thinking());
-                            } else if (m instanceof ToolExecutionResultMessage) {
-                                message.put("text", ((ToolExecutionResultMessage) m).text());
-                                message.put("tool", ((ToolExecutionResultMessage)m).toolName());
-                                message.put("id", ((ToolExecutionResultMessage)m).id());
-                            }
-                            return message;
-                        })
-                        .iterator(), dataWriter
-                );
-//                LOG.info("Saved messages.yaml");
-            }
-        } catch (Exception e) {
-            LOG.warn("Error saving messages", e);
-        }
+//        try (OutputStream data = new FileOutputStream(storage)) {
+//            try (OutputStreamWriter dataWriter = new OutputStreamWriter(data)) {
+//                new Yaml().dumpAll(messages.stream()
+//                                .filter(Objects::nonNull)
+//                        .map(m -> {
+//                            Map<String, Object> message = new HashMap<>();
+//                            message.put("type", m.type().name());
+//                            if (m instanceof SystemMessage) {
+//                                message.put("text", ((SystemMessage) m).text());
+//                            } else if (m instanceof UserMessage) {
+//                                message.put("text", ((UserMessage) m).singleText());
+//                            } else if (m instanceof AiMessage) {
+//                                message.put("text", ((AiMessage) m).text());
+//                                message.put("think", ((AiMessage)m).thinking());
+//                            } else if (m instanceof ToolExecutionResultMessage) {
+//                                message.put("text", ((ToolExecutionResultMessage) m).text());
+//                                message.put("tool", ((ToolExecutionResultMessage)m).toolName());
+//                                message.put("id", ((ToolExecutionResultMessage)m).id());
+//                            }
+//                            return message;
+//                        })
+//                        .iterator(), dataWriter
+//                );
+////                LOG.info("Saved messages.yaml");
+//            }
+//        } catch (Exception e) {
+//            LOG.warn("Error saving messages", e);
+//        }
     }
 
     private static String loadState(List<ChatMessage> messages) {
         StringBuilder result = new StringBuilder("Loading chat backup...\n");
-        try (InputStream data = new FileInputStream(storage)) {
-            result.append(String.format("Found backup file: %s", storage));
-            new Yaml().loadAll(data).forEach(msg -> {
-                if (!(msg instanceof Map)) {
-                    throw new RuntimeException("Message is not a Map");
-                }
-                final Map<String, Object> message = (Map<String, Object>) msg;
-                final String type = (String) message.get("type");
-                if (type.equals(ChatMessageType.USER.name())) {
-                    messages.add(UserMessage.from((String) message.get("text")));
-                } else if (type.equals(ChatMessageType.SYSTEM.name())) {
-                    messages.add(SystemMessage.from((String) message.get("text")));
-                } else if (type.equals(ChatMessageType.AI.name())) {
-                    messages.add(new AiMessage.Builder()
-                            .text((String) message.get("text"))
-                            .thinking((String) message.get("think"))
-                            .build());
-                } else if (type.equals(ChatMessageType.TOOL_EXECUTION_RESULT.name())) {
-                    messages.add(new ToolExecutionResultMessage((String) message.get("id"), (String) message.get("tool"), (String) message.get("text")));
-                } else {
-                    throw new RuntimeException("Unknown message type: " + type);
-                }
-            });
-            result.append("Loaded saved chat history.\n");
-        } catch (Exception e) {
-            result.append(String.format("Error loading messages: %s\n", e.getMessage()));
-        }
+//        try (InputStream data = new FileInputStream(storage)) {
+//            result.append(String.format("Found backup file: %s", storage));
+//            new Yaml().loadAll(data).forEach(msg -> {
+//                if (!(msg instanceof Map)) {
+//                    throw new RuntimeException("Message is not a Map");
+//                }
+//                final Map<String, Object> message = (Map<String, Object>) msg;
+//                final String type = (String) message.get("type");
+//                if (type.equals(ChatMessageType.USER.name())) {
+//                    messages.add(UserMessage.from((String) message.get("text")));
+//                } else if (type.equals(ChatMessageType.SYSTEM.name())) {
+//                    messages.add(SystemMessage.from((String) message.get("text")));
+//                } else if (type.equals(ChatMessageType.AI.name())) {
+//                    messages.add(new AiMessage.Builder()
+//                            .text((String) message.get("text"))
+//                            .thinking((String) message.get("think"))
+//                            .build());
+//                } else if (type.equals(ChatMessageType.TOOL_EXECUTION_RESULT.name())) {
+//                    messages.add(new ToolExecutionResultMessage((String) message.get("id"), (String) message.get("tool"), (String) message.get("text")));
+//                } else {
+//                    throw new RuntimeException("Unknown message type: " + type);
+//                }
+//            });
+//            result.append("Loaded saved chat history.\n");
+//        } catch (Exception e) {
+//            result.append(String.format("Error loading messages: %s\n", e.getMessage()));
+//        }
         return result.toString();
     }
 
+    private static void setupAi(Map<String, Object> config) {
+        boolean configured = false;
+        if (config.containsKey("ollama")) {
+            setupOllama((Map<String, Object>) config.get("ollama"));
+            configured = true;
+        }
+        if (config.containsKey("openai")) {
+            setupOpenAi((Map<String, Object>) config.get("openai"));
+            configured = true;
+        }
+
+        if (!configured) {
+            fatal("Failed to setup AI");
+        }
+    }
+
+    private static void setupOpenAi(Map<String, Object> config) {
+        if (!config.containsKey("token")) {
+            fatal("Config file does not contain hf/token key");
+        }
+
+        HttpClientBuilder jdkHttpClientBuilder = createHttpClientBuilder();
+        boolean think = Boolean.valueOf(config.getOrDefault("think", "false").toString());
+
+        if (Boolean.valueOf(config.getOrDefault("inference", "false").toString())) {
+            if (!config.containsKey("temperature")) {
+                fatal("Config file does not contain openai/temperature key");
+            }
+            if (!config.containsKey("model")) {
+                fatal("Config file does not contain openai model");
+            }
+            temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
+            chatModel = OpenAiChatModel.builder()
+                    .baseUrl(config.containsKey("server") ? config.get("server").toString() : null)
+                    .apiKey(config.get("token").toString())
+                    .modelName(config.get("model").toString())
+                    .temperature(temperature)
+                    .returnThinking(think)
+                    .sendThinking(think)
+                    .logRequests(false)
+                    .logResponses(false)
+                    .httpClientBuilder(jdkHttpClientBuilder)
+                    .modelName(config.get("model").toString())
+                    .build();
+        }
+
+        if (Boolean.valueOf(config.getOrDefault("memory", "false").toString())) {
+            if (!config.containsKey("embeddingModel")) {
+                fatal("Config file does not contain openai embedding model");
+            }
+            embeddingModel = OpenAiEmbeddingModel.builder()
+                    .baseUrl(config.get("embeddingServer").toString())
+                    .apiKey(config.get("token").toString())
+                    .logRequests(false)
+                    .logResponses(false)
+                    .httpClientBuilder(jdkHttpClientBuilder)
+                    .modelName(config.get("embeddingModel").toString())
+                    .build();
+        }
+    }
+
     private static void setupOllama(Map<String, Object> config) {
+        LOG.info("Ollama config: {}", config);
         if (!config.containsKey("server")) {
             fatal("Config file does not contain ollama/server key");
         }
@@ -642,40 +710,50 @@ public class App {
             headers.put("Authorization", "Bearer " + config.get("token"));
         }
 
-        if (!config.containsKey("model")) {
-            fatal("Config file does not contain ollama/model key");
+        HttpClientBuilder jdkHttpClientBuilder = createHttpClientBuilder();
+
+        if (Boolean.valueOf(config.getOrDefault("inference", "false").toString())) {
+            if (!config.containsKey("temperature")) {
+                fatal("Config file does not contain ollama/temperature key");
+            }
+            if (!config.containsKey("model")) {
+                fatal("Config file does not contain ollama model");
+            }
+
+            temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
+            chatModel = new OllamaChatModel.OllamaChatModelBuilder()
+                    .baseUrl(config.get("server").toString())
+                    .customHeaders(headers)
+                    .temperature(temperature)
+                    .think(true)
+                    .returnThinking(true)
+                    .logRequests(false)
+                    .logResponses(false)
+                    .httpClientBuilder(jdkHttpClientBuilder)
+                    .modelName(config.get("model").toString())
+                    .build();
         }
 
-        if (!config.containsKey("temperature")) {
-            fatal("Config file does not contain ollama/temperature key");
+        if (Boolean.valueOf(config.getOrDefault("memory", "false").toString())) {
+            LOG.info("Configuring ollama memory embedding model");
+            if (!config.containsKey("embeddingModel")) {
+                fatal("Config file does not contain ollama embedding model");
+            }
+            embeddingModel = new OllamaEmbeddingModel.OllamaEmbeddingModelBuilder()
+                    .baseUrl(config.get("server").toString())
+                    .customHeaders(headers)
+                    .logRequests(false)
+                    .logResponses(false)
+                    .httpClientBuilder(jdkHttpClientBuilder)
+                    .modelName(config.get("embeddingModel").toString())
+                    .build();
         }
-        temperature = Double.valueOf(Double.valueOf(config.get("temperature").toString()));
+    }
 
-        HttpClientBuilder jdkHttpClientBuilder = JdkHttpClient.builder()
+    private static HttpClientBuilder createHttpClientBuilder() {
+        return JdkHttpClient.builder()
                 .readTimeout(Duration.of(1, ChronoUnit.MINUTES))
                 .connectTimeout(Duration.of(1, ChronoUnit.MINUTES));
-
-
-        ollama = new OllamaChatModel.OllamaChatModelBuilder()
-                .baseUrl(config.get("server").toString())
-                .customHeaders(headers)
-                .temperature(temperature)
-                .think(true)
-                .returnThinking(true)
-                .logRequests(false)
-                .logResponses(false)
-                .httpClientBuilder(jdkHttpClientBuilder)
-                .modelName(config.get("model").toString())
-                .build();
-        embeddingOllama = new OllamaEmbeddingModel.OllamaEmbeddingModelBuilder()
-                .baseUrl(config.get("server").toString())
-                .customHeaders(headers)
-                .logRequests(false)
-                .logResponses(false)
-                .httpClientBuilder(jdkHttpClientBuilder)
-                .modelName(config.get("embeddingModel").toString())
-                .build();
-        memoryTool = new Memory(embeddingOllama);
     }
 
     private static void setupMqtt(Map<String, Object> config) {

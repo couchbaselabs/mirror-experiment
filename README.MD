@@ -119,6 +119,8 @@ I even provided a Dockerfile and scripts for that. To use the dockerfile, first 
 Or just use the `./run.sh` script for a one-shot run or `./loop.sh` script for looped run (for iterative prompt or app development).
 Good luck.
 
+Please note that configuration files for Docker are located in the `memory-init` directory.
+
 ## Low-level
 From the low-level POV, the project is performing multi-point traversals of an LLM model embedding space.
 

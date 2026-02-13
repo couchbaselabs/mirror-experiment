@@ -137,7 +137,7 @@ public class SystemTool {
         if (!App.workdir.exists() || !App.workdir.isDirectory()) {
             App.workdir = new File("/memory");
         }
-        final Process process = Runtime.getRuntime().exec(new String[]{"/usr/bin/bash", "-c", command}, null, App.workdir);
+        final Process process = Runtime.getRuntime().exec(new String[]{"/bin/bash", "-c", command}, null, App.workdir);
 
         if (inputStream != null) {
             IOUtils.copy(new StringReader(inputStream), process.getOutputStream());

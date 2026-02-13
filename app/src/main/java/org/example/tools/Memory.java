@@ -13,6 +13,7 @@ import com.couchbase.client.java.query.QueryResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.data.embedding.Embedding;
+import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,17 +28,19 @@ public class Memory implements Closeable {
     private final Cluster cluster;
     private final Bucket bucket;
     private final Collection collection;
-    private final OllamaEmbeddingModel ollama;
+    private final EmbeddingModel ollama;
     private static final Logger LOG = LoggerFactory.getLogger(Memory.class);
 
-    public Memory(OllamaEmbeddingModel ollama) {
+    public Memory(Map<String, Object> config, EmbeddingModel ollama) {
         this.ollama = ollama;
         this.cluster = Cluster.connect(
-                "couchbase://host.docker.internal", "Administrator", "password"
-//                "couchbase://localhost", "Administrator", "password"
+                config.get("cluster").toString(),
+                config.get("username").toString(),
+                config.get("password").toString()
         );
-        this.bucket = cluster.bucket("ai-memory");
-        this.collection = bucket.scope("_default").collection("_default");
+        this.bucket = cluster.bucket(config.get("bucket").toString());
+        this.collection = bucket.scope(config.get("scope").toString())
+                .collection(config.get("collection").toString());
     }
 
     @Tool("This is a passive skill that runs automatically every turn and injects relevant to your inputs and thoughts memories into the chat. It is a passive skill, you can't call it.")
@@ -84,7 +87,7 @@ public class Memory implements Closeable {
                 }
             }
 
-            cluster.query("CREATE INDEX ai_memory ON `ai-memory`._default._default(`vector` VECTOR) WITH {\"dimension\": " +
+            cluster.query("CREATE INDEX ai_memory ON " + collectionName() + "(`vector` VECTOR) WITH {\"dimension\": " +
                     embedding.dimension() +
                     ", \"similarity\": \"L2\", \"description\": \"IVF,SQ8\"}");
             LOG.info("Created vector index");
@@ -94,6 +97,10 @@ public class Memory implements Closeable {
             System.exit(-1);
             return null;
         }
+    }
+
+    private String collectionName() {
+        return "`" + bucket.name() + "`.`" + collection.scopeName() + "`.`" + collection.name() + "`";
     }
 
     public static String injectTag(String tag, String text) {
@@ -113,8 +120,8 @@ public class Memory implements Closeable {
             LOG.debug("Vectorized param: {}", new String(Base64.getEncoder().encode(param.toBytes())));
             params.add(param);
 
-            QueryResult qr = cluster.query("SELECT META().id as id, tag, text FROM `ai-memory`._default._default " +
-                            "ORDER BY vector_distance(vector, $1, \"L2\"), datetimems DESC LIMIT 3",
+            QueryResult qr = cluster.query("SELECT META().id as id, tag, text FROM " + collectionName() +
+                            " ORDER BY vector_distance(vector, $1, \"L2\"), datetimems DESC LIMIT 3",
                     QueryOptions.queryOptions().parameters(params));
 
             List<String> results = new ArrayList<>();

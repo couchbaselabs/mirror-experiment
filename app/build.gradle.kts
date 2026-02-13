@@ -27,6 +27,7 @@ dependencies {
     implementation("com.couchbase.client:java-client:3.11.0")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     implementation("dev.langchain4j:langchain4j-ollama:1.11.0")
+    implementation("dev.langchain4j:langchain4j-open-ai:1.11.0")
     implementation("dev.langchain4j:langchain4j-http-client-jdk:1.11.0")
     implementation("org.apache.commons:commons-io:1.3.2")
     implementation("org.apache.commons:commons-io:1.3.2")

@@ -3,28 +3,28 @@ package org.example.tools;
 import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.Collection;
-import com.couchbase.client.java.json.JacksonTransformers;
 import com.couchbase.client.java.json.JsonArray;
 import com.couchbase.client.java.json.JsonObject;
-import com.couchbase.client.java.kv.GetResult;
 import com.couchbase.client.java.manager.query.QueryIndex;
 import com.couchbase.client.java.query.QueryOptions;
 import com.couchbase.client.java.query.QueryResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.data.embedding.Embedding;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
+import org.example.App;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class Memory implements Closeable {
+    public static final String NO_MEMORIES = "No memories found.";
     private final Cluster cluster;
     private final Bucket bucket;
     private final Collection collection;
@@ -43,14 +43,14 @@ public class Memory implements Closeable {
                 .collection(config.get("collection").toString());
     }
 
-    @Tool("This is a passive skill that runs automatically every turn and injects relevant to your inputs and thoughts memories into the chat. It is a passive skill, you can't call it.")
+    @Tool("This is a passive skill that runs automatically every turn and injects relevant to your inputs and thoughts memory summaries into the chat. It is a passive skill, you can't call it.")
     public String autorecall() {
         // impemented in the app core
         return null;
     }
 
 
-    @Tool("Use this tool to create memories. Or just generate an AI message with text and it will be auto-memorized.")
+    @Tool("Use this tool to create memories.")
     public String memorize(String text) {
         // implemented in the tool routing
         return null;
@@ -60,7 +60,6 @@ public class Memory implements Closeable {
         if (text == null || text.isEmpty() || text.isBlank()) {
             return "Unable to store blank text";
         }
-        String recall = recall(Memory.injectTag(tag, text));
         try {
             Embedding embedding = ollama.embed(injectTag(tag, text)).content();
             JsonObject json = JsonObject.create();
@@ -79,10 +78,11 @@ public class Memory implements Closeable {
             LOG.info("Storing memory with id {}", id);
             collection.upsert(id, json);
 
+            String recall = recall(Memory.injectTag(tag, text));
+
             // ensure index exists
             for (QueryIndex qi : collection.queryIndexes().getAllIndexes()) {
                 if (!qi.primary() && qi.name().equals("ai_memory")) {
-                    LOG.info("found vector index");
                     return recall;
                 }
             }
@@ -109,6 +109,10 @@ public class Memory implements Closeable {
 
     @Tool("Use this tool to recall texts from your memory that are related to a question passed as an argument.")
     public String recall(@P("A question for target embedding vector") String question) {
+        return recall(question, true);
+    }
+
+    public String recall(@P("A question for target embedding vector") String question, boolean generalize) {
         try {
             Embedding embedding = ollama.embed(question).content();
             JsonArray params = JsonArray.create();
@@ -121,7 +125,7 @@ public class Memory implements Closeable {
             params.add(param);
 
             QueryResult qr = cluster.query("SELECT META().id as id, tag, text FROM " + collectionName() +
-                            " ORDER BY vector_distance(vector, $1, \"L2\"), datetimems DESC LIMIT 3",
+                            " ORDER BY vector_distance(vector, $1, \"L2\"), datetimems DESC LIMIT 5",
                     QueryOptions.queryOptions().parameters(params));
 
             List<String> results = new ArrayList<>();
@@ -130,9 +134,14 @@ public class Memory implements Closeable {
             }
 
             if (results.isEmpty()) {
-                return "No memories found. Not good. Generate a chat message and you will automatically memorize it.";
+                String prompt = App.getPrompt();
+                memorize(App.getTag(), prompt);
+                return prompt;
             }
             String recall = String.format("Memory recall:%n%s", results.stream().collect(Collectors.joining("\n\n")));
+            if (generalize) {
+                recall = generalize(recall);
+            }
             return recall;
         } catch (Exception e) {
             LOG.error("Failed to store memory", e);
@@ -140,8 +149,30 @@ public class Memory implements Closeable {
             return null;
         }
     }
-    
-    @Tool("Use this tool to execute SQL++ queries against your memory.")
+
+    private String generalize(String recall) {
+        return generalize(recall, 1);
+    }
+    private String generalize(String recall, int limit) {
+        ChatResponse response = App.queryOllama(Arrays.asList(
+                    UserMessage.from(
+                            String.format("Summarize the following memories from the first-person view of their author:%n%s", recall)
+                    )
+                ),
+                Collections.EMPTY_LIST);
+        if (response != null && response.aiMessage() != null && response.aiMessage().text() != null && !response.aiMessage().text().isBlank()) {
+            return response.aiMessage().text();
+        } else if (response.aiMessage() != null && response.aiMessage().hasToolExecutionRequests()) {
+            LOG.warn("{}", response.aiMessage().toolExecutionRequests());
+            throw new RuntimeException("SUMMARIZER CALLS TOOLS");
+        } else if (--limit > 0) {
+            return generalize(recall, limit);
+        } else {
+            return recall;
+        }
+    }
+
+//    @Tool("Use this tool to execute SQL++ queries against your memory.")
     public String query(@P("SQL++ query") String query) {
         try {
             LOG.info("SQL++ QUERY: {}", query);

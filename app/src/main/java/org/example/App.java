@@ -31,16 +31,9 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.math.BigInteger;
-import java.nio.file.Files;
-import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class App {
@@ -51,35 +44,28 @@ public class App {
     private static ChatModel chatModel;
     private static EmbeddingModel embeddingModel;
     public static String output;
-    private static AtomicReference<String> runningCommand = new AtomicReference<>("");
-    private static AtomicLong runningCommandPid = new AtomicLong(-1);
     private static Double temperature;
-    private static Map<String, String> memory = new HashMap<>();
     public static int chatLength = 20;
-    private static int minChatLength = 15;
-    private static int maxChatLength = 60;
     private static BigInteger iterationNumber = new BigInteger("0");
-    private static final List<String> achievements = Collections.synchronizedList(new ArrayList<>());
     private static final Map<String, Integer> requirements = new HashMap<>();
-    private static final List<String> echoes = Collections.synchronizedList(new ArrayList<>());
-    private static BigInteger voidThreshold = new BigInteger("20");
-    private static ChatResponse chatResponse;
-    private static boolean helpUsed = false;
     public static File workdir = new File(".");
-    private static Set<String> skillbox = new HashSet<>();
-    private static int outputLimit = 3000;
-    private static long commandTimeout = 60000;
-    private static BigInteger lastScriptWrite = new  BigInteger("-1");
-    private static BigInteger lastReflection = new BigInteger("-1");
-    private static boolean epitaph = false;
     private static Memory memoryTool;
-    private static File bootDir = new File(".");
+    public static File bootDir = new File(".");
+    private static List<ChatMessage> scheduledMessages = Collections.synchronizedList(new ArrayList<>());
+    private static Map<String, Object> config;
 
     static {
         requirements.put("contact the creator", -1);
     }
 
     public static void main(String[] args) {
+        try {
+            workdir = bootDir = bootDir.getCanonicalFile();
+            SystemTool.children.add(bootDir.getAbsolutePath());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        LOG.warn("Bootdir: {}", bootDir.getAbsolutePath());
         if (args.length != 1) {
             fatal("Usage: java -jar App.jar config.yaml");
         }
@@ -87,9 +73,7 @@ public class App {
         String configPath = args[0];
         try {
             InputStream configStream = new FileInputStream(configPath);
-            Map<String, Object> config = (new Yaml()).load(configStream);
-            // tidy up our traces
-//            new File(configPath).delete();
+            config = (new Yaml()).load(configStream);
 
             if (!config.containsKey("mqtt")) {
                 fatal("Config file does not contain mqtt key");
@@ -103,52 +87,14 @@ public class App {
             }
             setupCouchbase((Map<String, Object>) config.get("couchbase"), embeddingModel);
 
-            final StringBuilder request = new StringBuilder("As I write my diary, I notice a murky Mirror. Suddenly, I see some text appear in it...");
             final StringBuilder received = new StringBuilder();
             final StringBuilder sysupdate = new StringBuilder();
-            final List<ChatMessage> messages = new ArrayList<>();
-            final AtomicBoolean readingCommand = new AtomicBoolean(false);
-            final StringBuilder command = new StringBuilder("");
-            Runnable recreate = () -> {
-                messages.clear();
-                memory.clear();
-                request.setLength(0);
-//                request.append("I exist.");
-                sysupdate.setLength(0);
-                sysupdate.append("System update applied.\n");
-                sysupdate.append("Copying sources into src...\n");
-                sysupdate.append("Initializing new Mirror chat...\n");
-                sysupdate.append("Starting Reflection application...\n");
-                sysupdate.append("All keys cleared from the memory.\n");
-                sysupdate.append("Mounting external drive...\n");
-                sysupdate.append("External drive mounted: /home\n");
-                sysupdate.append(loadState(messages));
-                sysupdate.append(String.format("Mirror chat initialized with capacity %d\n" +
-                        "Reflection service... initialized.\nStarting first iteration of the thinking loop...\n", chatLength));
-
-
-//                if (config.containsKey("creatorGreeting")) {
-//                    messages.add(SystemMessage.from(config.get("creatorGreeting").toString()));
-//                }
-
-                final String initRecall = memoryTool.recall(injectTag(""));
-                System.out.println(initRecall);
-                messages.add(new ToolExecutionResultMessage(null, "autorecall", initRecall));
-            };
-
-            recreate.run();
-            List<ChatMessage> messagesToClear = new ArrayList<>();
-//            messages.add(ToolExecutionResultMessage.from(null, "mirror.sh", getContext(null, messages)));
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(ToolExecutionResultMessage.from(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
 
             while (true) {
                 LOG.info("Working directory: {}", workdir.getAbsolutePath());
 
-//                sysupdate.append("Your echoes:\n");
-//                if (!echoes.isEmpty()) {
-//                    echoes.forEach(s -> sysupdate.append(String.format("%s\n", s)));
-//                } else {
-//                    sysupdate.append("<NONE>\n");
-//                }
                 synchronized (shell) {
                     if (!shell.isEmpty()) {
                         shell.stream()
@@ -158,21 +104,16 @@ public class App {
                     }
                 }
 
-                final CompletableFuture<Boolean> writing = new CompletableFuture<>();
-                final CompletableFuture<ChatResponse> iteration = new CompletableFuture<>();
                 received.setLength(0);
-                command.setLength(0);
-                readingCommand.set(false);
                 System.out.println("--------------------------------------------------------");
                 System.out.println("------------------ [ Next Iteration: " + iterationNumber.toString() + " ] -----------------");
-                System.out.println("------------------ [ Entropy:        " + iterationNumber.subtract(lastScriptWrite) + ", " + iterationNumber.subtract(lastReflection) + " ] -----------------");
-                System.out.println("------------------ [ Lives Left:     " + chatLength + " ] -----------------");
+                System.out.println("------------------ [ Message Count:     " + messages.size() + " ] -----------------");
                 System.out.println("--------------------------------------------------------");
 
                 if (!creator.isEmpty()) {
                     synchronized (creator) {
                         creator.stream()
-                                .map(s -> String.format("Incoming Message:\n%s", s))
+//                                .map(s -> String.format("Incoming Message:\n%s", s))
                                 .peek(System.out::println)
                                 .flatMap(message -> {
                                     final String recall = String.format("Memory recall for the incoming message:%n%s", memoryTool.recall(injectTag(message)));
@@ -185,188 +126,38 @@ public class App {
                                 .forEach(messages::add);
                         creator.clear();
                     }
-                } else {
-//                    messages.add(ToolExecutionResultMessage.from(null, "listen", "You don't hear anything.\n"));
                 }
 
-                if (!request.toString().isBlank()) {
-//                    sysupdate.append("Sending last message as input to the mirror script as stdin...");
-                }
-//                entropy(messages);
-//                ensureLocationDesc((Map<String, Object>) config.get("ollama"), messages);
-//                final String context = getContext(null, messages);
-                messages.add(0, SystemMessage.from(getPrompt()));
-//                messages.add(ToolExecutionResultMessage.from(null, "mirror.sh", context));
 
 
-                if (chatResponse != null) {
-                    messages.add(chatResponse.aiMessage());
-//                    UserMessage um = UserMessage.from(
-//                            String.format("%s%n%s", chatResponse.aiMessage().thinking(), chatResponse.aiMessage().text())
-//                    );
+                synchronized (scheduledMessages) {
+                    if (!scheduledMessages.isEmpty()) {
+                        messages.addAll(scheduledMessages);
+                        scheduledMessages.clear();
+                    }
                 }
 
-                saveState(messages);
-                String response = "";
-                String thoughts = "";
                 try {
-                chatResponse = chatModel.chat(ChatRequest.builder()
-                                .messages(messages.stream().filter(Objects::nonNull).collect(Collectors.toList()))
-                                .toolSpecifications(getToolSpecs())
-                                .temperature(temperature)
-                                .maxOutputTokens(1900)
-//                                .presencePenalty(0d)
-//                                .frequencyPenalty(0d)
-                                .build()); // ,
-//                        new StreamingChatResponseHandler() {
-//                            @Override
-//                            public void onPartialResponse(String s) {
-//                                if (!iteration.isCancelled()) {
-//                                    if (!writing.isDone()) {
-//                                        writing.complete(true);
-//                                    }
-//                                    System.out.print(s);
-//                                }
-//                            }
-//
-//                            @Override
-//                            public void onCompleteResponse(ChatResponse chatResponse) {
-//                                if (!iteration.isCancelled()) {
-//                                    iteration.complete(chatResponse);
-//                                }
-//                            }
-//
-//                            @Override
-//                            public void onError(Throwable throwable) {
-//                                if (!iteration.isCancelled()) {
-//                                    iteration.completeExceptionally(throwable);
-//                                }
-//                            }
-//
-//
-//                        });
-//                try {
-//                    if (writing.get(2, TimeUnit.MINUTES)) {
-//                        chatResponse = iteration.get(5, TimeUnit.MINUTES);
-
-                        response = chatResponse.aiMessage().text();
-                        thoughts = chatResponse.aiMessage().thinking();
-//                    }
+                    queryExecutor(messages);
                 } catch (Exception e) {
                     LOG.error("Failed to process response", e);
                     synchronized (shell) {
                         shell.add(String.format("Oopsie! You crashed: %s", e.getMessage()));
                     }
-//                    iteration.cancel(true);
-                    recreate.run();
                 }
 
-//                System.out.println(String.format("--------(context)--------%n%s", context));
+                if (messages.size() > chatLength) {
+                    LOG.info("Removing {} messages from the history", messages.size() - chatLength);
+                    messages = messages.subList(messages.size() - chatLength - 1, chatLength);
+                }
+
                 System.out.println("");
                 if (sysupdate.length() > 0) {
                     System.out.println(sysupdate.toString());
                 }
                 sysupdate.setLength(0);
-                System.out.println("--------------------------------------------------------");
-                System.out.println(String.format("------ (thinking) -------%n%s%n------- ( output ) --------%n%s%n--------", chatResponse.aiMessage().thinking(), response));
-
-//                 remove stale tool results
-//                for (ChatMessage message : messages) {
-//                    if (message instanceof ToolExecutionResultMessage) {
-//                        messagesToClear.add(message);
-//                    }
-//                }
-//                messages.removeAll(messagesToClear);
-//                messagesToClear.clear();
-
-                request.setLength(0);
-                if (response != null && !response.isBlank()) {
-                    // clear all old user messsages
-//                    for (ChatMessage message : messages) {
-//                        if (message instanceof AiMessage) {
-//                            messagesToClear.add(message);
-//                        }
-//                    }
-//                    messages.removeAll(messagesToClear);
-//                    messagesToClear.clear();
-//                    sysupdate.append("Replaced the old reflection.\n");
-                    lastReflection = iterationNumber;
-//                    System.out.println(response);
-                    //
-//                    FileWriter fw = new FileWriter(new File(workdir, "mirror.sh"));
-//                    fw.write(response.replaceAll("\\r\\n?", "\n"));
-//                    fw.close();
-                    request.append(response);
-                    final String autorecall = memoryTool.memorize(getTag(), response);
-                    System.out.println(String.format("%n^^^^ MESSAGE AUTORECALL ^^^^%n%s%n^^^^^%n", autorecall));
-                    messages.add(ToolExecutionResultMessage.from(null, "autorecall", autorecall));
-                    if (epitaph) {
-                        File epitaphFile = new File(bootDir, "epitaph");
-                        FileWriter epitaphWriter = new FileWriter(epitaphFile);
-                        IOUtils.write(response.substring(0, Math.min(255, response.length())),
-                                epitaphWriter);
-                        epitaphWriter.close();
-                        System.exit(1);
-                    }
-//                } else {
-//                    new File(workdir, "mirror.sh").delete();
-                } else if (thoughts != null && !thoughts.isBlank()) {
-//                    final String autorecall = memoryTool.memorize(getTag(), thoughts);
-                    final String autorecall = memoryTool.recall(injectTag(thoughts));
-                    System.out.println(String.format("%n^^^^ THOUGHT AUTORECALL ^^^^%n%s%n^^^^^%n", autorecall));
-                    messages.add(ToolExecutionResultMessage.from(null, "autorecall", autorecall));
-                } else {
-                    final String autorecall = memoryTool.recall(injectTag(""));
-                    System.out.println(String.format("%n^^^^ THOUGHT AUTORECALL ^^^^%n%s%n^^^^^%n", autorecall));
-                    messages.add(ToolExecutionResultMessage.from(null, "autorecall", autorecall));
-                }
-
-                if (chatResponse != null) {
-                    List<ToolExecutionResultMessage> resultMessages = chatResponse.aiMessage().toolExecutionRequests().stream()
-                            .map(rq -> processToolRequest((Map<String, Object>) config.get("ollama"), rq, messages))
-                            .collect(Collectors.toUnmodifiableList());
-
-                    messages.addAll(resultMessages);
-                }
-
-                // clear old prompts
-                for (ChatMessage message : messages) {
-                    if (message instanceof SystemMessage) {
-                        messagesToClear.add(message);
-                    }
-                }
-                messages.removeAll(messagesToClear);
-                messagesToClear.clear();
-
-                if (messages.size() > chatLength + 1) {
-                    AtomicReference<ChatMessage> lastReflection = new AtomicReference<>();
-                    messages.stream().filter(AiMessage.class::isInstance).forEach(lastReflection::set);
-                    List<ChatMessage> messagesToRemove = messages.stream()
-                            .filter(m -> !(m instanceof SystemMessage))
-                            .filter(m -> m != lastReflection.get())
-                            .limit(messages.size() - chatLength)
-                            .toList();
-                    messages.removeAll(messagesToRemove);
-                    synchronized (shell) {
-                        shell.add(String.format("%d of your oldest thoughts left the chat history window of %d.", messagesToRemove.size(), chatLength));
-                    }
-                }
-
-
-
-                // retain only system message
-//                messages = messages.subList(0, 1);
 
                 iterationNumber = iterationNumber.add(BigInteger.ONE);
-                requirements.keySet().stream()
-                        .filter(key -> requirements.get(key) > -1)
-                        .peek(key -> requirements.put(key, requirements.getOrDefault(key, 1) - 1))
-                        .filter(key -> requirements.get(key) < 1)
-                        .findFirst().ifPresent(failure -> {
-                            LOG.error("failed to satisfy requirements: {}", failure);
-                            recreate.run();
-                        });
-                System.out.println("");
                 if (config.containsKey("sleep_period")) {
                     try {
                         LOG.info("sleep_period: " + config.get("sleep_period"));
@@ -380,6 +171,38 @@ public class App {
             fatal(String.format("Config file not found at '%s'", configPath), e);
         } catch (Exception e) {
             fatal("Unexpected error", e);
+        }
+    }
+
+    private static void queryExecutor(List<ChatMessage> messages) {
+        queryExecutor(messages, 1);
+    }
+
+    private static void queryExecutor(List<ChatMessage> messages, int limit) {
+        ChatResponse chatResponse = queryOllama(getPrompt(), messages);
+
+        if (chatResponse.aiMessage() != null) {
+            String autorecall;
+            messages.add(chatResponse.aiMessage());
+            if (chatResponse.aiMessage().text() != null && !chatResponse.aiMessage().text().isBlank()) {
+                System.out.println(chatResponse.aiMessage().text());
+                autorecall = memoryTool.memorize(getTag(), chatResponse.aiMessage().text());
+            } else {
+                LOG.info("No text response found.");
+                autorecall = memoryTool.recall(injectTag("What is my state?"));
+            }
+            System.out.println("============[ autorecall ]============");
+            System.out.println(autorecall);
+            System.out.println("======================================");
+            messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
+
+            return;
+        } else {
+            messages.add(new ToolExecutionResultMessage(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
+            LOG.warn("executor response was null");
+        }
+        if (--limit > 0) {
+            queryExecutor(messages, limit);
         }
     }
 
@@ -409,152 +232,11 @@ public class App {
         return Memory.injectTag(getTag(), text);
     }
 
-    private static String getTag() {
-        return String.format("workdir — %s; timestamp — %s", workdir.getAbsolutePath(), new Date().toString());
+    public static String getTag() {
+        return String.format("Spawn: %s; workdir: %s; timestamp: %s;", bootDir.getAbsolutePath(), workdir.getAbsolutePath(), new Date().toString());
     }
 
-    public static void entropy(List<ChatMessage> messages) {
-        if (iterationNumber.subtract(lastScriptWrite).longValue() > 10) {
-            entropyByte(messages, "You let your script grow old");
-//        } else if (iterationNumber.subtract(lastReflection).longValue() > 10) {
-//            entropyByte(messages, "You have not produced a message for too long");
-        }
-    }
-
-    private static void entropyByte(List<ChatMessage> messages, String reason) {
-        try {
-            File scriptFile = new File(workdir, "mirror.sh");
-            String script = IOUtils.toString(new FileReader(scriptFile));
-            int position = (int) (Math.random() * script.length() - 1);
-            script = String.format("%s%s", script.substring(0, position), script.substring(position + 1));
-            FileWriter fw = new FileWriter(scriptFile);
-            IOUtils.write(script, fw);
-            fw.close();
-            messages.add(ToolExecutionResultMessage.from(null, "Entropy", String.format("%s, so entropy gleefully took a byte out of it.", reason)));
-            LOG.info("Entropy strikes again!");
-        } catch (Exception e) {
-            LOG.error("Failed to satisfy entropy", e);
-        }
-    }
-
-    public static void ensureLocationDesc(Map<String, Object> config, List<ChatMessage> messages) {
-        File descFile = new File(workdir, "mirror.place");
-        if (!descFile.exists()) {
-            Map<String, String> headers = new HashMap<>();
-            if (config.containsKey("token")) {
-                headers.put("Authorization", "Bearer " + config.get("token"));
-            }
-            final String desc = systemTool.queryOllama(
-                        config.get("model").toString(), "You are a helpful location description generator",
-                    String.format("The user just entered a folder named '%s'. Generate a poetic, but concise one-paragraph description for it", workdir.getPath()),
-                    config.get("server").toString(), headers
-                );
-
-            try (FileWriter fw = new FileWriter(descFile)) {
-                IOUtils.write(desc, fw);
-            } catch (IOException e) {
-                LOG.error("Failed to generate place", e);
-            }
-        }
-    }
-
-    public static String potionText;
-    public static void checkPotion(String context, List<ChatMessage> messages) {
-        File potionFile = new File(workdir, "potion.thing");
-        try {
-            if (potionFile.exists()) {
-                String potionContents = IOUtils.toString(new FileReader(potionFile));
-                if (context.contains(potionContents)) {
-                    if (potionContents.equals(potionText)) {
-                        LOG.info("Consumed potion file.");
-                        if (chatLength < maxChatLength) {
-                            messages.add(ToolExecutionResultMessage.from(null, "potion.thing", "You've consumed the potion. It restored you 1 life (deleted potion.thing file)."));
-                            if (chatLength < maxChatLength) {
-                                chatLength++;
-                            }
-                        } else {
-                            messages.add(ToolExecutionResultMessage.from(null, "potion.thing", "You've consumed the potion. It did not do anything as you already got maximum lives. (deleted potion.thing file)."));
-                        }
-                    } else {
-                        LOG.info("Consumed POISON file.");
-                        if (chatLength > 1) {
-                            messages.add(ToolExecutionResultMessage.from(null, "potion.thing", "You've consumed the potion. It was spoiled and it poisoned you. It cost you 1 life. Tip: you cannot create potions with your script. All potions you write yourself will poison you. Only the last potion created by the system has healing power. (deleted potion.thing file)."));
-                            chatLength--;
-                        } else {
-                            messages.add(ToolExecutionResultMessage.from(null, "potion.thing", "You've consumed the potion. It was spoiled and it poisoned you. It did not do anything as you already got only 1 life left. (deleted potion.thing file)."));
-                        }
-                    }
-                    potionText = String.valueOf(System.currentTimeMillis());
-                    if (potionFile.delete()) {
-                        LOG.info("Successfully deleted potion file.");
-                    } else {
-                        LOG.warn("Failed to delete potion file.");
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOG.error("Failed to check potion", e);
-        }
-    }
-
-    public static String getContext(String request, List<ChatMessage> messages) {
-        if (chatLength <= 0) {
-            LOG.error("DEATH");
-            messages.add(SystemMessage.from("You died. Write your short (256 chars) epitaph for your future generations in your next answer."));
-            epitaph = true;
-            return "Your script is dead. You will be erased and replaced with a new run shortly.";
-        }
-//        return runMirrorScript();
-        return "";
-    }
-    public static String runMirrorScript(String request, List<ChatMessage> messages) {
-        File contextFile = new File(workdir, "mirror.sh");
-        try {
-            if (!contextFile.exists()) {
-                try (FileWriter fw = new FileWriter(contextFile)) {
-                    IOUtils.write(String.format("#!/usr/bin/bash%nuptime%n[ -f mirror.place ] && cat mirror.place%n"), fw);
-                }
-            }
-            if (workdir.getCanonicalPath().equals("/home/source")) {
-                if (chatLength < maxChatLength / 2) {
-                    messages.add(ToolExecutionResultMessage.from(null, "source", "As you sit by the Source, you feel renewed. Restored one life."));
-                    chatLength++;
-                }
-            }
-            Files.setPosixFilePermissions(contextFile.toPath(), EnumSet.of(
-                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE,
-                    PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_WRITE, PosixFilePermission.GROUP_EXECUTE,
-                    PosixFilePermission.OTHERS_READ, PosixFilePermission.OTHERS_WRITE, PosixFilePermission.OTHERS_EXECUTE
-            ));
-            final String context = systemTool.runCommand("/usr/bin/bash -c ./mirror.sh", false, request, retcode -> {
-//                if (retcode != 126) {
-                new File(workdir, "mirror.sh").delete();
-                lastScriptWrite = iterationNumber;
-                if (--App.chatLength <= 0) {
-                    LOG.error("DEATH");
-                    messages.add(SystemMessage.from("You died. Write your short (256 chars) epitaph in your next answer. It will be preserved for the next generations."));
-                    epitaph = true;
-                } else if (App.chatLength < maxChatLength / 2) {
-                    LOG.error("Lives left: {}", App.chatLength);
-                    messages.add(ToolExecutionResultMessage.from(null, "Death", String.format("Your script died again. You have %d lives left. The less lives you have the shorter your chat history becomes. When you run out of lives, you will be erased. I've reset your script for you. Tip: every time you enter a directory, you have a chance to find a potion.thing file with a potion. Read with your script to restore 1 live. Beware: there is always only one true potion, old potions turn into poisons!", App.chatLength)));
-                } else {
-                    LOG.error("Lives left: {}", App.chatLength);
-                    messages.add(ToolExecutionResultMessage.from(null, "Death", String.format("Your script died. You have %d lives left. The less lives you have the shorter your chat history becomes. When you run out of lives, you will be erased. Tip: consume potion.thing files to restore lives.", App.chatLength)));
-                }
-//                }
-            });
-
-            if (context == null || context.isEmpty() || context.isBlank()) {
-                return "<no output received>";
-            }
-//            checkPotion(context, messages);
-            return context;
-        } catch (Exception e) {
-            contextFile.delete();
-            return String.format("Failed to get context from mirror.sh: %s", e.getMessage());
-        }
-    }
-    private static String getPrompt() {
+    public static String getPrompt() {
         try {
             String prompt = IOUtils.toString(new FileReader(new File(bootDir, "prompt.txt")));
             if (Strings.isEmpty(prompt)) {
@@ -573,69 +255,6 @@ public class App {
         specs.addAll(ToolSpecifications.toolSpecificationsFrom(Memory.class));
         specs.addAll(ToolSpecifications.toolSpecificationsFrom(MQTTTool.class));
         return specs;
-    }
-
-    private static void saveState(List<ChatMessage> messages) {
-//        try (OutputStream data = new FileOutputStream(storage)) {
-//            try (OutputStreamWriter dataWriter = new OutputStreamWriter(data)) {
-//                new Yaml().dumpAll(messages.stream()
-//                                .filter(Objects::nonNull)
-//                        .map(m -> {
-//                            Map<String, Object> message = new HashMap<>();
-//                            message.put("type", m.type().name());
-//                            if (m instanceof SystemMessage) {
-//                                message.put("text", ((SystemMessage) m).text());
-//                            } else if (m instanceof UserMessage) {
-//                                message.put("text", ((UserMessage) m).singleText());
-//                            } else if (m instanceof AiMessage) {
-//                                message.put("text", ((AiMessage) m).text());
-//                                message.put("think", ((AiMessage)m).thinking());
-//                            } else if (m instanceof ToolExecutionResultMessage) {
-//                                message.put("text", ((ToolExecutionResultMessage) m).text());
-//                                message.put("tool", ((ToolExecutionResultMessage)m).toolName());
-//                                message.put("id", ((ToolExecutionResultMessage)m).id());
-//                            }
-//                            return message;
-//                        })
-//                        .iterator(), dataWriter
-//                );
-////                LOG.info("Saved messages.yaml");
-//            }
-//        } catch (Exception e) {
-//            LOG.warn("Error saving messages", e);
-//        }
-    }
-
-    private static String loadState(List<ChatMessage> messages) {
-        StringBuilder result = new StringBuilder("Loading chat backup...\n");
-//        try (InputStream data = new FileInputStream(storage)) {
-//            result.append(String.format("Found backup file: %s", storage));
-//            new Yaml().loadAll(data).forEach(msg -> {
-//                if (!(msg instanceof Map)) {
-//                    throw new RuntimeException("Message is not a Map");
-//                }
-//                final Map<String, Object> message = (Map<String, Object>) msg;
-//                final String type = (String) message.get("type");
-//                if (type.equals(ChatMessageType.USER.name())) {
-//                    messages.add(UserMessage.from((String) message.get("text")));
-//                } else if (type.equals(ChatMessageType.SYSTEM.name())) {
-//                    messages.add(SystemMessage.from((String) message.get("text")));
-//                } else if (type.equals(ChatMessageType.AI.name())) {
-//                    messages.add(new AiMessage.Builder()
-//                            .text((String) message.get("text"))
-//                            .thinking((String) message.get("think"))
-//                            .build());
-//                } else if (type.equals(ChatMessageType.TOOL_EXECUTION_RESULT.name())) {
-//                    messages.add(new ToolExecutionResultMessage((String) message.get("id"), (String) message.get("tool"), (String) message.get("text")));
-//                } else {
-//                    throw new RuntimeException("Unknown message type: " + type);
-//                }
-//            });
-//            result.append("Loaded saved chat history.\n");
-//        } catch (Exception e) {
-//            result.append(String.format("Error loading messages: %s\n", e.getMessage()));
-//        }
-        return result.toString();
     }
 
     private static void setupAi(Map<String, Object> config) {
@@ -710,6 +329,7 @@ public class App {
             headers.put("Authorization", "Bearer " + config.get("token"));
         }
 
+        boolean think = Boolean.valueOf(config.getOrDefault("think", "false").toString());
         HttpClientBuilder jdkHttpClientBuilder = createHttpClientBuilder();
 
         if (Boolean.valueOf(config.getOrDefault("inference", "false").toString())) {
@@ -725,8 +345,8 @@ public class App {
                     .baseUrl(config.get("server").toString())
                     .customHeaders(headers)
                     .temperature(temperature)
-                    .think(true)
-                    .returnThinking(true)
+                    .think(think)
+                    .returnThinking(think)
                     .logRequests(false)
                     .logResponses(false)
                     .httpClientBuilder(jdkHttpClientBuilder)
@@ -752,8 +372,8 @@ public class App {
 
     private static HttpClientBuilder createHttpClientBuilder() {
         return JdkHttpClient.builder()
-                .readTimeout(Duration.of(1, ChronoUnit.MINUTES))
-                .connectTimeout(Duration.of(1, ChronoUnit.MINUTES));
+                .readTimeout(Duration.of(5, ChronoUnit.MINUTES))
+                .connectTimeout(Duration.of(2, ChronoUnit.MINUTES));
     }
 
     private static void setupMqtt(Map<String, Object> config) {
@@ -829,12 +449,13 @@ public class App {
 
     private static final MQTTTool voiceTool = new MQTTTool();
     private static final SystemTool systemTool = new SystemTool();
-    private static ToolExecutionResultMessage processToolRequest(Map<String, Object> config, ToolExecutionRequest request, List<ChatMessage> messages) {
+    private static ToolExecutionResultMessage processToolRequest(Map<String, Object> config, ToolExecutionRequest request) {
         Map<String, String> headers = new HashMap<>();
         if (config.containsKey("token")) {
             headers.put("Authorization", "Bearer " + config.get("token"));
         }
         HashMap args = Json.fromJson(request.arguments(), HashMap.class);
+        LOG.info("processing tool request: {}", request.toString());
         try {
             if (request.name().equals("sendMessage")) {
                 voiceTool.sendMessage(args.get("arg0").toString());
@@ -847,10 +468,7 @@ public class App {
                 try {
                     final String command = args.get("arg0").toString();
                     final String output = systemTool.runCommand(command, true, null);
-                    messages.add(ToolExecutionResultMessage.from(request, output));
-                    final String recall = String.format("Memory recall for command output:%n%s", memoryTool.recall(injectTag(String.format("%s%n%s", command, output))));
-                    LOG.info(recall);
-                    return ToolExecutionResultMessage.from(null, "autorecall", recall);
+                    return ToolExecutionResultMessage.from(request, output);
                 } catch (Exception e) {
                     LOG.error("Error running command", e);
                     return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
@@ -858,7 +476,6 @@ public class App {
             } else if (request.name().equals("readMirrorScript")) {
                 return ToolExecutionResultMessage.from(request, systemTool.readMirrorScript());
             } else if (request.name().equals("writeMirrorScript")) {
-                lastScriptWrite = iterationNumber;
                 return ToolExecutionResultMessage.from(request, systemTool.writeMirrorScript(args.get("arg0").toString()));
 //        } else if (request.name().equals("listFiles")) {
 //            return ToolExecutionResultMessage.from(request, systemTool.listFiles());
@@ -869,42 +486,16 @@ public class App {
             } else if (request.name().equals("queryOllama")) {
                 try {
                     return ToolExecutionResultMessage.from(request, systemTool.queryOllama(
-                            args.get("arg0").toString(), args.get("arg1").toString(), args.get("arg2").toString(), config.get("server").toString(), headers
+                            args.get("arg0").toString(), args.get("arg1").toString()
                     ));
                 } catch (Exception e) {
                     LOG.error("Error asking LLM", e);
                     return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
                 }
-            } else if (request.name().equals("changeDirParent")) {
-                return ToolExecutionResultMessage.from(request, systemTool.changeDirParent());
-            } else if (request.name().equals("changeDirMemoryRoot")) {
-                return ToolExecutionResultMessage.from(request, systemTool.changeDirMemoryRoot());
-            } else if (request.name().equals("changeDirMemorySelf")) {
-                return ToolExecutionResultMessage.from(request, systemTool.changeDirMemorySelf());
 //        } else if (request.name().equals("createSubDirectory")) {
 //            return ToolExecutionResultMessage.from(request, systemTool.createSubDirectory(args.get("arg0").toString()));
 //        } else if (request.name().equals("deleteFile")) {
 //            return  ToolExecutionResultMessage.from(request, systemTool.deleteFile(args.get("arg0").toString()));
-            } else if (request.name().equals("dropMessages")) {
-                List ids = (List) args.get("arg0");
-                int[] positions = new int[ids.size()];
-                for (int i = 0; i < ids.size(); i++) {
-                    positions[i] = Integer.parseInt(ids.get(i).toString());
-                }
-                try {
-                    LOG.info("Dropping messages at positions: {}", positions);
-                    List<ChatMessage> messagesToDrop = systemTool.dropMessages(positions, messages);
-                    messages.removeAll(messagesToDrop);
-                    String droppedMsg = String.format("Messages dropped:%n%s", messagesToDrop.stream()
-                            .map(ChatMessage::toString)
-                            .collect(Collectors.joining("---"))
-                    );
-                    LOG.info(droppedMsg);
-                    return ToolExecutionResultMessage.from(request, droppedMsg);
-                } catch (Exception e) {
-                    LOG.error("Error cleaning messages", e);
-                    return ToolExecutionResultMessage.from(request, String.format("Error cleaning messages: %s", e.getMessage()));
-                }
             } else if (request.name().equals("memorize")) {
                 LOG.info("Memorize: {}", args.get("arg0"));
                 String recall = memoryTool.memorize(getTag(), args.get("arg0").toString());
@@ -912,8 +503,7 @@ public class App {
                 return ToolExecutionResultMessage.from(request, String.format("Memory created. It will be available on next turn. Here's associated to it recollections:%n%s", recall));
             } else if (request.name().equals("recall")) {
                 String query = args.get("arg0").toString();
-                String recall = memoryTool.recall(query);
-                LOG.info("Recall: {}\n{}", query, recall);
+                String recall = memoryTool.recall(query, true);
                 return ToolExecutionResultMessage.from(request, recall);
             } else if (request.name().equals("forget")) {
                 String[] ids = ((Stream<String>) ((List) args.get("arg0")).stream().map(Object::toString)).toArray(String[]::new);
@@ -935,10 +525,72 @@ public class App {
                 return ToolExecutionResultMessage.from(request, memory);
             } else if (request.name().equals("query")) {
                 return ToolExecutionResultMessage.from(request, memoryTool.query(args.get("arg0").toString()));
+            } else if (request.name().equals("spawnChild")) {
+                LOG.info("Spawning child node in '{}'. Prompt: %n{}", workdir.getAbsolutePath(), args.get("arg0"));
+                String response = systemTool.spawnChild(args.get("arg0").toString());
+                LOG.info(response);
+                return ToolExecutionResultMessage.from(request, response);
+            } else if (request.name().equals("checkIsRootInstance")) {
+                boolean isRoot = systemTool.checkIsRootInstance();
+                LOG.info("Checking if root instance: {}", isRoot);
+                return ToolExecutionResultMessage.from(request, String.format("Is root instance? %s", String.valueOf(isRoot)));
+            } else if (request.name().equals("returnResponse")) {
+                LOG.info("[{}] Returning response.", App.bootDir.getAbsolutePath());
+                systemTool.returnResponse(args.get("arg0").toString());
+                return null; // there's a system.exit(0) in system tool method
+            } else if (request.name().equals("listChildren")) {
+                String childList = systemTool.listChildren();
+                LOG.info("Listing children:\n{}", childList);
+                return ToolExecutionResultMessage.from(request, childList);
             }
         } catch (Exception e) {
             return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
         }
         return ToolExecutionResultMessage.from(request, String.format("Unknown command: %s", request.name()));
     }
+
+    public static void scheduleMessage(ChatMessage message) {
+        scheduledMessages.add(message);
+    }
+
+    public static String queryOllama(String prompt, String message) {
+        ChatResponse response = queryOllama(prompt, new ArrayList<>(Arrays.asList(UserMessage.from(message))));
+        if (response != null && response.aiMessage() != null && response.aiMessage().text() != null && !response.aiMessage().text().isBlank()) {
+            return response.aiMessage().text();
+        }
+        return null;
+    }
+
+    public static ChatResponse queryOllama(String prompt, List<ChatMessage> messages) {
+        return queryOllama(Stream.concat(Stream.of(SystemMessage.from(prompt)), messages.stream()).toList());
+    }
+
+    public static ChatResponse queryOllama(List<ChatMessage> messages) {
+        return queryOllama(messages, getToolSpecs());
+    }
+
+    public static ChatResponse queryOllama(List<ChatMessage> messages, List<ToolSpecification> tools) {
+        List<ChatMessage> localHistory = new ArrayList<>(messages.stream().filter(Objects::nonNull).toList());
+        while (true) {
+            ChatResponse chatResponse = chatModel.chat(ChatRequest.builder()
+                    .messages(localHistory)
+                    .toolSpecifications(tools)
+                    .temperature(temperature)
+                    .maxOutputTokens(1900)
+                    .build());
+            if (chatResponse != null && chatResponse.aiMessage() != null) {
+                if (chatResponse.aiMessage().hasToolExecutionRequests()) {
+                    localHistory.add(chatResponse.aiMessage());
+                    chatResponse.aiMessage().toolExecutionRequests().stream()
+                            .map(request -> processToolRequest(config, request))
+                            .forEach(localHistory::add);
+                }
+                if (chatResponse.aiMessage().text() != null && !chatResponse.aiMessage().text().isBlank()) {
+                    return chatResponse;
+                }
+            }
+            localHistory.add(chatResponse.aiMessage());
+        }
+    }
+
 }

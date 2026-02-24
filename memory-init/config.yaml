@@ -15,24 +15,32 @@ ollama:
   server: http://host.docker.internal:11434/
 #  server: https://ai.cbdevx.com/ollama/
 #  model: "llama3.2:latest"
+#  model: phi3:mini
+#  model: llama3.1:8b
+#  model: gemma2:9b
 #  model: "rnj-1"
 #  model: mistral:7b
 #  model: "llama3.1:8b"
 #  model: "qwen3:8b"
 #  model: "qwen3:14b"
+#  model: glm-4.7-flash
+#  model: granite3.3:8b  # not calling tools properly
   model: "DedeProGames/open-reasoner:8b"
+#  model: "glm-4.7-flash"
 #  model: "qwen3:30b"
   #model: erukude/multiagent-orchestrator:1b
   #model: "ministral-3:latest"
 #  model: "gpt-oss:20b"
 #  model: "llama2-uncensored"
 #  model: "qwen3-coder:30b"
+#  model: qwen2.5-coder:7b
 #  model: "llama3-groq-tool-use:8b"
 #  model: "deepseek-r1:70b"
   embeddingModel: llama3.2:latest
   memory: true
   inference: true
   temperature: 0
+#  think: true
 openai:
 #  server: https://router.huggingface.co/v1
 #  token: "***REMOVED***"
@@ -42,6 +50,7 @@ openai:
   model: gpt-5.2
   temperature: 0
   inference: false
+  think: false
 mqtt: # mqtt configuration for topics that are to be used by send and receive tools only
   broker: tcp://192.168.x.x:1883
   id: mirror

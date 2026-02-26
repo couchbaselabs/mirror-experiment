@@ -1,6 +1,6 @@
  > Can machines think?
-![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqtt-chat-1.png?raw=true)
-![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqtt-chat-2.png?raw=true)
+![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-1.png?raw=true)
+![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-2.png?raw=true)
 ![Example of generated memories](https://github.com/couchbaselabs/mirror-experiment/blob/main/memories.png?raw=true)
 ![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/mirror-chat.png?raw=true)
 

@@ -94,8 +94,10 @@ public class App {
             final StringBuilder sysupdate = new StringBuilder();
             List<ChatMessage> messages = new ArrayList<>();
 //            if (systemTool.checkIsRootInstance()) {
+            messages.add(ToolExecutionResultMessage.from(null, "system", "All child instances stopped.\nFile system re-initialized.\nSystem re-initialized.\nRecalling system state..."));
                 messages.add(ToolExecutionResultMessage.from(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
 //            }
+
 
             while (true) {
                 LOG.info("Working directory: {}", workdir.getAbsolutePath());

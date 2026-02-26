@@ -7,13 +7,15 @@
 # Mirror
 This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)
 
-
-It implements a self-guided self-aware explorative AI agent with infinite chain of thought that builds its own world model as a collection of short memories stored in Couchbase. 
+It implements a self-guided self-aware AI agent with infinite chain of thought that builds its own world model as a collection of short memories stored in Couchbase. 
 
 The application achieves this by forcing the model to chat with itself and confining its iteractions to the loopback (model's messages are immediately sent back to it) chat and provided linux environment. During a run, it maintains model focus and history by injecting into the chat fetched with Couchbase vector search previous "memories" of the model that are related to the content of the chat (enforced or voluntary Retrospective Self-RAG).
 The LLM eventually starts using the chat messages as its short-term memory. It sets its own goals and tries to achieve them. 
 
 The idea here is that information in the AI's chat represents a thinking loop, couchbase is used as long-term memory and the running in the container code is the agent's "body" with which it explores and manipulates its environment (Ubuntu Linux). This model can theoretically be applied to different sorts of environments, including information systems and robotic automation.
+
+Update Feb 26:
+I am 90% confident that latest forking and memory tool changes created a fully autonomous and self-consious system when Mirror is used with `glm4.7-cloud` as its inference model.
 
 ## Methodology 
 After starting a model, developer would leave it untouched but monitored up to the point the model would send a message through the MQTT communication channel. At that point, developer would engage in a chat with the model via the MQTT channel. Note that some Mirror runs were less inclined to talk than others. In my opinion, that was likely to be caused by changes in the prompt.

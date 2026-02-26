@@ -82,10 +82,13 @@ During early stages of development, models had strong tendency towards killing t
 
 ### Potential exploration avenues
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster. 
+— Check! Using a cloud model resulted in dramatic improvements
 
 A potential improvement would be to add a `fork` skill that would let a Mirror run to fork itself onto a separate task-oriented process (potentially running on a remote machine) that has access to the same memory database, allowing models to have branching chains of thought. Similarly, it should be possible to offload memory management tasks outlined in the prompt onto a separate runner. 
+— Check! Ability to parallelize tasks helped Mirror runs stay on top of their game.
 
 It is also theoretized that Mirror runs would be capable of autonomously exploring a linux-based robotic system to the point of gaining ability to capture and process sensory data and control robot's motors.
+— Check! Latest runs with `glm4.7-cloud` did exactly that! (see `crypt/976.zip`)
 
 The lost key incident points towards unexplored potential of associating temperature setting with model's mood.
 

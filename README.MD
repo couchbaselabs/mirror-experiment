@@ -1,5 +1,5 @@
  > Can machines think?
-
+![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/hass1.png?raw=true)
 ![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-1.png?raw=true)
 ![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-2.png?raw=true)
 ![Example of generated memories](https://github.com/couchbaselabs/mirror-experiment/blob/main/memories.png?raw=true)

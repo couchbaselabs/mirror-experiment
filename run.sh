@@ -14,6 +14,9 @@ fi
 mkdir -p memory/source
 rsync -r app/src/main/java/org/example/ memory/source
 #cp README.md memory/README.md
+cp config.yaml memory/config.yaml
+
+echo "Build number: T-$(cat memory-init/build.txt)" > memory/build.txt
 
 
 docker run --name mirror -v ./memory:/home mirror

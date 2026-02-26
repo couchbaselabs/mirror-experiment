@@ -1,17 +1,16 @@
 package org.example.tools;
 
-import com.google.common.base.Joiner;
 import com.google.common.io.LineReader;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.data.message.*;
 import org.apache.commons.io.IOUtils;
 import org.example.App;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -20,6 +19,15 @@ import java.util.stream.Collectors;
 
 public class SystemTool {
     private static final Logger log = LoggerFactory.getLogger(SystemTool.class);
+
+    public SystemTool() {
+        try {
+            children.put(App.bootDir.getCanonicalPath(), "(current instance)");
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(-1);
+        }
+    }
 
 //    @Tool("Use this tool to create a sub-directory")
 //    public String createSubDirectory(@P("directory name") String directoryName) {
@@ -233,6 +241,10 @@ public class SystemTool {
         log.info("ask LLM, prompt:\n{}\n\n question:\n {}\nresponse:{}", systemPrompt, question, response);
         return response;
     }
+    @Tool("Use this tool to get your current directory")
+    public String getWorkingDirectory() {
+        return String.format("Working directory: %s", App.workdir.getAbsolutePath());
+    }
 
     @Tool("Use this tool instead of `cd` bash command to change your context by setting current working directory.")
     public String changeWorkingDirectory(@P("address of the next context folder") String target) {
@@ -303,31 +315,62 @@ public class SystemTool {
 //
 //    }
 
-    public static Set<String> children = new HashSet<>();
+    public static Map<String, String> children = new HashMap<>();
 
-    @Tool("Spawns a child instance of you in the current working directory")
-    public String spawnChild(@P("Prompt for the child instance") String prompt) {
+    @Tool("Spawns a child instance of you in specified working directory. The working directory must be located under your starting directory.")
+    public String spawnChild(@P("Child working directory") String workingDirectory, @P("Prompt for the child instance that describes a finite task and report that child should produce when done.") String prompt) {
         if (!checkIsRootInstance()) {
             return "Unable to spawn children: not the root instance.";
         }
 
-        final File workdir = App.workdir;
+        final File workdir = new File(workingDirectory);
         try {
             String canonicalPath = workdir.getCanonicalPath();
-            if (children.contains(canonicalPath)) {
+            if (!canonicalPath.startsWith(App.bootDir.getAbsolutePath())) {
+                return String.format("Unable to spawn a child. Working directory '%s' is outside of your spawn directory '%s'", canonicalPath, App.bootDir.getAbsolutePath());
+            }
+            if (!workdir.exists()) {
+                return "Unable to spawn a child. Working directory does not exist.";
+            }
+            if (children.containsKey(canonicalPath)) {
                 if (canonicalPath.equals(App.bootDir.getCanonicalPath())) {
-                    return "Unable to spawn children in your own spawn directory";
+                    return "Unable to spawn children directly in your own starting directory";
                 }
                 return String.format("Failed to spawn a child in '%s': there is already an instance running in this directory.", workdir.getAbsolutePath());
             } else {
-                children.add(workdir.getAbsolutePath());
+                List<ChatMessage> summs = App.queryOllama(Arrays.asList(
+                        SystemMessage.from("You are a helpful summarizer that summarizes messagees into short one-sentence descriptions"),
+                        UserMessage.from(String.format("Summarize this into several words:%n%s", prompt))
+                ), Collections.EMPTY_LIST);
+
+                String summarized = summs
+                        .stream()
+                        .filter(AiMessage.class::isInstance)
+                        .map(AiMessage.class::cast)
+                        .reduce((l, r) -> r)
+                        .map(AiMessage::text)
+                        .orElse("(failed to summarize prompt)");
+
+                log.info("Summarized prompt:\n{}", summarized);
+                children.put(canonicalPath, summarized);
             }
 
             File promptFile = new File(workdir, "prompt.txt");
-            IOUtils.write(prompt, new FileWriter(String.format("You are a child instance launched in '%s'. You must return your response to your root instance when ready. Here is your prompt:%n%s", canonicalPath, prompt)));
+            FileWriter promptFileWriter = new FileWriter(promptFile);
+            IOUtils.write(
+                    String.format(
+                            "You are a child instance launched in '%s'. You must return your response to your root instance when ready. You must return your response using `returnResponseToRootInstance` tool. If the task is not clear, return your questions in your response. Refuse the task and generate a response if you cannot finish the task by sending a single response. Here is your prompt:%n%s",
+                            canonicalPath,
+                            prompt
+                    ),
+                    promptFileWriter
+            );
+
+            promptFileWriter.flush();
+            promptFileWriter.close();
 
 
-            final Process process = Runtime.getRuntime().exec(new String[]{"/bin/bash", "-c", "java -jar /mirror.jar /home/config.yaml"}, null, workdir);
+            final Process process = Runtime.getRuntime().exec(new String[]{"/bin/bash", "-c", "java -jar /mirror.jar /home/config.yaml", "2>&1"}, null, workdir);
             process.getOutputStream().flush();
             process.getOutputStream().close();
 
@@ -335,37 +378,38 @@ public class SystemTool {
                 LineReader reader = new LineReader(process.inputReader());
                 try {
                     for (String line = reader.readLine(); line != null; line = reader.readLine()) {
-                        System.out.println(String.format("[%s] %s", workdir.getPath(), line));
+                        System.out.println(String.format("[%s] %s", canonicalPath, line));
                     }
 
+                    System.out.println(String.format("Returning from child: %s", canonicalPath));
                     // exit
                     File responseFile = new File(workdir, ".ai.response");
-                    try {
-                        if (responseFile.exists()) {
-                            String response = IOUtils.toString(new FileReader(responseFile));
-                            if (!response.isEmpty()) {
-                                App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponse",
-                                        String.format("Response from child instance in directory '%s':%n%s", workdir.getAbsolutePath(), response)));
-                            }
+                    if (responseFile.exists()) {
+                        String response = IOUtils.toString(new FileReader(responseFile));
+                        if (!response.isEmpty()) {
+                            response = String.format("Response from child instance in directory '%s':%n%s", workdir.getAbsolutePath(), response);
+                            System.out.println("");
+                            System.out.println("!!! " + response);
+                            App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", response));
                         }
-                    } finally {
                         responseFile.delete();
-                        promptFile.delete();
+                    } else {
+                        System.out.println(String.format("\nResponse from child instance in directory '%s' does not exist.", canonicalPath));
+                        App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", String.format("Child '%s' returned no response.", canonicalPath)));
                     }
                 } catch (Exception e) {
                     System.out.println(String.format("[%s] %s", workdir.getPath(), e.getMessage()));
                     e.printStackTrace();
+                    App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", String.format("Failed to handle child '%s': %s", canonicalPath, e.getMessage())));
                 } finally {
                     children.remove(workdir.getAbsolutePath());
-                    if (process.isAlive()) {
-                        process.destroyForcibly();
-                    }
                 }
             }, String.format("Mirror instance '%s'", App.workdir.getAbsolutePath()));
             runner.start();
 
-            return String.format("Launched child instance '%s'", workdir.getAbsolutePath());
+            return String.format("Launched child instance '%s'. You will receive its report automatically when it finishes.", workdir.getAbsolutePath());
         } catch (Exception e) {
+            e.printStackTrace();
             return String.format("Failed to spawn child instance '%s': %s", workdir.getAbsolutePath(), e.getMessage());
         }
     }
@@ -377,23 +421,31 @@ public class SystemTool {
 
     @Tool("Use this tool to get list of all your running children")
     public String listChildren() {
-        return children.stream()
-                .filter(child -> !child.equals(App.bootDir.getAbsolutePath()))
+        if (children.isEmpty()) {
+            return "-- no children --";
+        }
+        return children.keySet().stream()
+                .map(path -> {
+                        return String.format(
+                                "%s => %s",
+                                path,
+                                children.get(path)
+                        );
+                })
                 .collect(Collectors.joining("\n"));
     }
 
     @Tool("Terminates current child instance and returns answer to the root instance")
-    public String returnResponse(@P("Your response to parent instance") String response) {
+    public String returnResponseToRootInstance(@P("Your response to parent instance") String response) {
         if (checkIsRootInstance()) {
-            return "Unable to return response: already running as parent instance";
+            throw new RuntimeException("Unable to return response: already running as parent instance");
         }
 
         try (FileWriter fw = new FileWriter(new File(App.bootDir, ".ai.response"))) {
             fw.write(response);
-            System.exit(0);
             return null;
         } catch (IOException e) {
-            return String.format("Unable to send response to parent instance '%s'", e.getMessage());
+            throw new RuntimeException(String.format("Unable to send response to parent instance '%s'", e.getMessage()));
         }
     }
 }

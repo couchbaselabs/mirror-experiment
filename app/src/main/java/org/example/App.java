@@ -45,7 +45,7 @@ public class App {
     private static EmbeddingModel embeddingModel;
     public static String output;
     private static Double temperature;
-    public static int chatLength = 20;
+    public static int chatLength = 50;
     private static BigInteger iterationNumber = new BigInteger("0");
     private static final Map<String, Integer> requirements = new HashMap<>();
     public static File workdir = new File(".");
@@ -53,6 +53,8 @@ public class App {
     public static File bootDir = new File(".");
     private static List<ChatMessage> scheduledMessages = Collections.synchronizedList(new ArrayList<>());
     private static Map<String, Object> config;
+    private static String prompt;
+    private static final BigInteger resetCycle = BigInteger.valueOf(10);
 
     static {
         requirements.put("contact the creator", -1);
@@ -61,7 +63,6 @@ public class App {
     public static void main(String[] args) {
         try {
             workdir = bootDir = bootDir.getCanonicalFile();
-            SystemTool.children.add(bootDir.getAbsolutePath());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -79,7 +80,9 @@ public class App {
                 fatal("Config file does not contain mqtt key");
             }
 
-            setupMqtt((Map<String, Object>) config.get("mqtt"));
+            if (systemTool.checkIsRootInstance()) {
+                setupMqtt((Map<String, Object>) config.get("mqtt"));
+            }
 
             setupAi(config);
             if (!config.containsKey("couchbase")) {
@@ -90,7 +93,9 @@ public class App {
             final StringBuilder received = new StringBuilder();
             final StringBuilder sysupdate = new StringBuilder();
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(ToolExecutionResultMessage.from(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
+//            if (systemTool.checkIsRootInstance()) {
+                messages.add(ToolExecutionResultMessage.from(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
+//            }
 
             while (true) {
                 LOG.info("Working directory: {}", workdir.getAbsolutePath());
@@ -113,7 +118,7 @@ public class App {
                 if (!creator.isEmpty()) {
                     synchronized (creator) {
                         creator.stream()
-//                                .map(s -> String.format("Incoming Message:\n%s", s))
+                                .map(s -> String.format("Incoming Message:\n%s", s))
                                 .peek(System.out::println)
                                 .flatMap(message -> {
                                     final String recall = String.format("Memory recall for the incoming message:%n%s", memoryTool.recall(injectTag(message)));
@@ -148,7 +153,7 @@ public class App {
 
                 if (messages.size() > chatLength) {
                     LOG.info("Removing {} messages from the history", messages.size() - chatLength);
-                    messages = messages.subList(messages.size() - chatLength - 1, chatLength);
+                    messages = messages.subList(messages.size() - chatLength - 1, messages.size());
                 }
 
                 System.out.println("");
@@ -158,6 +163,11 @@ public class App {
                 sysupdate.setLength(0);
 
                 iterationNumber = iterationNumber.add(BigInteger.ONE);
+                if (iterationNumber.remainder(resetCycle).equals(BigInteger.ZERO)) {
+                    String whoami = memoryTool.recall("Who am I?", false);
+                    System.out.println(String.format("%n%nWHOAMI?%n%s%n", whoami));
+                    messages.add(AiMessage.from(whoami));
+                }
                 if (config.containsKey("sleep_period")) {
                     try {
                         LOG.info("sleep_period: " + config.get("sleep_period"));
@@ -179,28 +189,36 @@ public class App {
     }
 
     private static void queryExecutor(List<ChatMessage> messages, int limit) {
-        ChatResponse chatResponse = queryOllama(getPrompt(), messages);
+        List<ChatMessage> responseMessages = queryOllama(getPrompt(), messages);
+        if (!responseMessages.isEmpty()) {
+            ChatMessage chatMessage = responseMessages.stream()
+                    .filter(AiMessage.class::isInstance)
+                    .map(AiMessage.class::cast)
+                    .reduce((l, r) -> r).orElse(null);
 
-        if (chatResponse.aiMessage() != null) {
-            String autorecall;
-            messages.add(chatResponse.aiMessage());
-            if (chatResponse.aiMessage().text() != null && !chatResponse.aiMessage().text().isBlank()) {
-                System.out.println(chatResponse.aiMessage().text());
-                autorecall = memoryTool.memorize(getTag(), chatResponse.aiMessage().text());
-            } else {
-                LOG.info("No text response found.");
-                autorecall = memoryTool.recall(injectTag("What is my state?"));
+            if (chatMessage instanceof AiMessage) {
+                AiMessage message = (AiMessage) chatMessage;
+                String autorecall;
+                if (message.text() != null && !message.text().isBlank()) {
+                    final String text = message.text();
+                    System.out.println(text);
+                    memoryTool.generateMemories(text);
+                    autorecall = memoryTool.recall(injectTag(text));
+                } else {
+                    LOG.info("No text response found.");
+                    autorecall = memoryTool.recall(injectTag("What is my state?"));
+                }
+                System.out.println("============[ autorecall ]============");
+                System.out.println(autorecall);
+                System.out.println("======================================");
+                messages.addAll(responseMessages);
+                messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
+
+                return;
             }
-            System.out.println("============[ autorecall ]============");
-            System.out.println(autorecall);
-            System.out.println("======================================");
-            messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
-
-            return;
-        } else {
-            messages.add(new ToolExecutionResultMessage(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
-            LOG.warn("executor response was null");
         }
+        messages.add(new ToolExecutionResultMessage(null, "autorecall", memoryTool.recall(injectTag("What is my state?"))));
+        LOG.warn("executor response was null");
         if (--limit > 0) {
             queryExecutor(messages, limit);
         }
@@ -238,7 +256,11 @@ public class App {
 
     public static String getPrompt() {
         try {
-            String prompt = IOUtils.toString(new FileReader(new File(bootDir, "prompt.txt")));
+            if (prompt == null) {
+                File promptFile = new File(bootDir, "prompt.txt");
+                prompt = IOUtils.toString(new FileReader(promptFile));
+                promptFile.delete();
+            }
             if (Strings.isEmpty(prompt)) {
                 return "no prompt found";
             }
@@ -253,7 +275,9 @@ public class App {
         List<ToolSpecification> specs = new ArrayList<>();
         specs.addAll(ToolSpecifications.toolSpecificationsFrom(SystemTool.class));
         specs.addAll(ToolSpecifications.toolSpecificationsFrom(Memory.class));
-        specs.addAll(ToolSpecifications.toolSpecificationsFrom(MQTTTool.class));
+        if (systemTool.checkIsRootInstance()) {
+            specs.addAll(ToolSpecifications.toolSpecificationsFrom(MQTTTool.class));
+        }
         return specs;
     }
 
@@ -481,6 +505,8 @@ public class App {
 //            return ToolExecutionResultMessage.from(request, systemTool.listFiles());
 //        } else if (request.name().equals("writeMirrorScript")) {
 //            return ToolExecutionResultMessage.from(request, systemTool.writeMirrorScript(args.get("arg0").toString()));
+            } else if (request.name().equals("getWorkingDirectory")) {
+                return ToolExecutionResultMessage.from(request, systemTool.getWorkingDirectory());
             } else if (request.name().equals("changeWorkingDirectory")) {
                 return ToolExecutionResultMessage.from(request, systemTool.changeWorkingDirectory(args.get("arg0").toString()));
             } else if (request.name().equals("queryOllama")) {
@@ -498,9 +524,8 @@ public class App {
 //            return  ToolExecutionResultMessage.from(request, systemTool.deleteFile(args.get("arg0").toString()));
             } else if (request.name().equals("memorize")) {
                 LOG.info("Memorize: {}", args.get("arg0"));
-                String recall = memoryTool.memorize(getTag(), args.get("arg0").toString());
-                LOG.info("Memorize Recall: {}", recall);
-                return ToolExecutionResultMessage.from(request, String.format("Memory created. It will be available on next turn. Here's associated to it recollections:%n%s", recall));
+                memoryTool.memorizeNoRecall(getTag(), args.get("arg0").toString());
+                return ToolExecutionResultMessage.from(request, String.format("Memory created."));
             } else if (request.name().equals("recall")) {
                 String query = args.get("arg0").toString();
                 String recall = memoryTool.recall(query, true);
@@ -526,24 +551,30 @@ public class App {
             } else if (request.name().equals("query")) {
                 return ToolExecutionResultMessage.from(request, memoryTool.query(args.get("arg0").toString()));
             } else if (request.name().equals("spawnChild")) {
-                LOG.info("Spawning child node in '{}'. Prompt: %n{}", workdir.getAbsolutePath(), args.get("arg0"));
-                String response = systemTool.spawnChild(args.get("arg0").toString());
+                LOG.info("Spawning child node in '{}'. Prompt: %n{}", args.get("arg0"), args.get("arg1"));
+                String response = systemTool.spawnChild(args.get("arg0").toString(), args.get("arg1").toString());
                 LOG.info(response);
                 return ToolExecutionResultMessage.from(request, response);
             } else if (request.name().equals("checkIsRootInstance")) {
                 boolean isRoot = systemTool.checkIsRootInstance();
                 LOG.info("Checking if root instance: {}", isRoot);
                 return ToolExecutionResultMessage.from(request, String.format("Is root instance? %s", String.valueOf(isRoot)));
-            } else if (request.name().equals("returnResponse")) {
+            } else if (request.name().equals("returnResponseToRootInstance")) {
                 LOG.info("[{}] Returning response.", App.bootDir.getAbsolutePath());
-                systemTool.returnResponse(args.get("arg0").toString());
-                return null; // there's a system.exit(0) in system tool method
+                try {
+                    systemTool.returnResponseToRootInstance(args.get("arg0").toString());
+                    memoryTool.clearSpawn();
+                    System.exit(0);
+                }  catch (Exception e) {
+                    return ToolExecutionResultMessage.from(request, e.getMessage());
+                }
             } else if (request.name().equals("listChildren")) {
                 String childList = systemTool.listChildren();
                 LOG.info("Listing children:\n{}", childList);
                 return ToolExecutionResultMessage.from(request, childList);
             }
         } catch (Exception e) {
+            e.printStackTrace();
             return ToolExecutionResultMessage.from(request, String.format("Error processing request: %s", e.getMessage()));
         }
         return ToolExecutionResultMessage.from(request, String.format("Unknown command: %s", request.name()));
@@ -554,24 +585,35 @@ public class App {
     }
 
     public static String queryOllama(String prompt, String message) {
-        ChatResponse response = queryOllama(prompt, new ArrayList<>(Arrays.asList(UserMessage.from(message))));
-        if (response != null && response.aiMessage() != null && response.aiMessage().text() != null && !response.aiMessage().text().isBlank()) {
-            return response.aiMessage().text();
+        List<ChatMessage> messages = queryOllama(prompt, new ArrayList<>(Arrays.asList(UserMessage.from(message))));
+        if (!messages.isEmpty()) {
+            ChatMessage responseMessage = messages.stream()
+                    .filter(AiMessage.class::isInstance)
+                    .reduce((l, r) -> r).orElse(null);
+
+            if (responseMessage instanceof AiMessage) {
+                AiMessage response = (AiMessage) responseMessage;
+                if (response.text() != null && !response.text().isBlank()) {
+                    return response.text();
+                }
+            }
         }
         return null;
     }
 
-    public static ChatResponse queryOllama(String prompt, List<ChatMessage> messages) {
+    public static List<ChatMessage> queryOllama(String prompt, List<ChatMessage> messages) {
         return queryOllama(Stream.concat(Stream.of(SystemMessage.from(prompt)), messages.stream()).toList());
     }
 
-    public static ChatResponse queryOllama(List<ChatMessage> messages) {
+    public static List<ChatMessage> queryOllama(List<ChatMessage> messages) {
         return queryOllama(messages, getToolSpecs());
     }
 
-    public static ChatResponse queryOllama(List<ChatMessage> messages, List<ToolSpecification> tools) {
+    public static List<ChatMessage> queryOllama(List<ChatMessage> messages, List<ToolSpecification> tools) {
         List<ChatMessage> localHistory = new ArrayList<>(messages.stream().filter(Objects::nonNull).toList());
+        List<ChatMessage> generated = new ArrayList<>();
         while (true) {
+            LOG.info("-- ollama request --");
             ChatResponse chatResponse = chatModel.chat(ChatRequest.builder()
                     .messages(localHistory)
                     .toolSpecifications(tools)
@@ -581,15 +623,25 @@ public class App {
             if (chatResponse != null && chatResponse.aiMessage() != null) {
                 if (chatResponse.aiMessage().hasToolExecutionRequests()) {
                     localHistory.add(chatResponse.aiMessage());
+                    generated.add(chatResponse.aiMessage());
                     chatResponse.aiMessage().toolExecutionRequests().stream()
                             .map(request -> processToolRequest(config, request))
+                            .peek(generated::add)
                             .forEach(localHistory::add);
                 }
-                if (chatResponse.aiMessage().text() != null && !chatResponse.aiMessage().text().isBlank()) {
-                    return chatResponse;
+                if (chatResponse.aiMessage().text() != null) {
+                    String responseText = chatResponse.aiMessage().text()
+                            .replaceAll("<think>", "")
+                            .replaceAll("</think>", "");
+                    if (!responseText.isBlank()) {
+                        if (!chatResponse.aiMessage().hasToolExecutionRequests()) {
+                            localHistory.add(chatResponse.aiMessage());
+                            generated.add(chatResponse.aiMessage());
+                        }
+                        return generated;
+                    }
                 }
             }
-            localHistory.add(chatResponse.aiMessage());
         }
     }
 

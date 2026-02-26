@@ -10,7 +10,10 @@ import com.couchbase.client.java.query.QueryOptions;
 import com.couchbase.client.java.query.QueryResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.embedding.Embedding;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -50,15 +53,19 @@ public class Memory implements Closeable {
     }
 
 
-    @Tool("Use this tool to create memories.")
-    public String memorize(String text) {
+    @Tool("Use this skill to store a new memory")
+    public String memorize(@P("Memory to store") String arg0) {
         // implemented in the tool routing
         return null;
     }
 
     public String memorize(String tag, String text) {
+        memorizeNoRecall(tag, text);
+        return recall(Memory.injectTag(tag, text));
+    }
+    public void memorizeNoRecall(String tag, String text) {
         if (text == null || text.isEmpty() || text.isBlank()) {
-            return "Unable to store blank text";
+            return;
         }
         try {
             Embedding embedding = ollama.embed(injectTag(tag, text)).content();
@@ -74,16 +81,16 @@ public class Memory implements Closeable {
             json.put("tag", tag);
             text = String.format("%s", text);
             json.put("text", text);
+            json.put("spawn", App.bootDir.getAbsolutePath());
             String id = UUID.nameUUIDFromBytes(text.getBytes()).toString();
             LOG.info("Storing memory with id {}", id);
             collection.upsert(id, json);
 
-            String recall = recall(Memory.injectTag(tag, text));
 
             // ensure index exists
             for (QueryIndex qi : collection.queryIndexes().getAllIndexes()) {
                 if (!qi.primary() && qi.name().equals("ai_memory")) {
-                    return recall;
+                    return;
                 }
             }
 
@@ -91,11 +98,9 @@ public class Memory implements Closeable {
                     embedding.dimension() +
                     ", \"similarity\": \"L2\", \"description\": \"IVF,SQ8\"}");
             LOG.info("Created vector index");
-            return recall;
         } catch (Exception e) {
             LOG.error("Failed to store memory", e);
             System.exit(-1);
-            return null;
         }
     }
 
@@ -122,10 +127,12 @@ public class Memory implements Closeable {
                 param.add(v);
             }
             LOG.debug("Vectorized param: {}", new String(Base64.getEncoder().encode(param.toBytes())));
+            params.add(App.bootDir.getAbsolutePath());
             params.add(param);
 
             QueryResult qr = cluster.query("SELECT META().id as id, tag, text FROM " + collectionName() +
-                            " ORDER BY vector_distance(vector, $1, \"L2\"), datetimems DESC LIMIT 5",
+                            " WHERE spawn = $1" +
+                            " ORDER BY vector_distance(vector, $2, \"L2\"), datetimems DESC LIMIT 10",
                     QueryOptions.queryOptions().parameters(params));
 
             List<String> results = new ArrayList<>();
@@ -154,22 +161,29 @@ public class Memory implements Closeable {
         return generalize(recall, 1);
     }
     private String generalize(String recall, int limit) {
-        ChatResponse response = App.queryOllama(Arrays.asList(
+        List<ChatMessage> messages = App.queryOllama(Arrays.asList(
                     UserMessage.from(
                             String.format("Summarize the following memories from the first-person view of their author:%n%s", recall)
                     )
                 ),
                 Collections.EMPTY_LIST);
-        if (response != null && response.aiMessage() != null && response.aiMessage().text() != null && !response.aiMessage().text().isBlank()) {
-            return response.aiMessage().text();
-        } else if (response.aiMessage() != null && response.aiMessage().hasToolExecutionRequests()) {
-            LOG.warn("{}", response.aiMessage().toolExecutionRequests());
-            throw new RuntimeException("SUMMARIZER CALLS TOOLS");
-        } else if (--limit > 0) {
-            return generalize(recall, limit);
-        } else {
-            return recall;
+
+        ChatMessage lastMessage = messages.stream()
+                .filter(AiMessage.class::isInstance)
+                .reduce((l, r) -> r).orElse(null);
+
+        if (lastMessage instanceof AiMessage) {
+            AiMessage response = (AiMessage) lastMessage;
+            if (response.text() != null && !response.text().isBlank()) {
+                return response.text();
+            } else if (response.hasToolExecutionRequests()) {
+                LOG.warn("{}", response.toolExecutionRequests());
+                throw new RuntimeException("SUMMARIZER CALLS TOOLS");
+            } else if (--limit > 0) {
+                return generalize(recall, limit);
+            }
         }
+        return recall;
     }
 
 //    @Tool("Use this tool to execute SQL++ queries against your memory.")
@@ -203,7 +217,7 @@ public class Memory implements Closeable {
                     collection.remove(uuid);
                     builder.append(String.format("Forgot memory with id %s", uuid));
                 } catch (Exception e) {
-                    LOG.error("Failed to forget memory with id {}", uuid, e);
+                    LOG.error("Failed to forget memory with id {}: {}", uuid, e.getMessage());
                     builder.append(String.format("Failed to forget memory with id %s: %s", uuid, e.getMessage()));
                 }
             }
@@ -234,5 +248,20 @@ public class Memory implements Closeable {
     @Override
     public void close() throws IOException {
         cluster.disconnect();
+    }
+
+    public void clearSpawn() {
+       cluster.query("DELETE FROM " + collectionName() + " WHERE spawn = $1",
+               QueryOptions.queryOptions()
+                       .parameters(JsonArray.from(App.bootDir.getAbsolutePath())));
+    }
+
+    public void generateMemories(String text) {
+        App.queryOllama(Arrays.asList(
+                        UserMessage.from(
+                                String.format("These are your own memories. Analyze the following text, extract important facts and knowledge and use memorize tool to store them as separate first-person memories:%n%s", text)
+                        )
+                ),
+                ToolSpecifications.toolSpecificationsFrom(Memory.class));
     }
 }

@@ -70,13 +70,13 @@ During early stages of development, models had strong tendency towards killing t
 - Because all data is ingested by the model as tool execution results, a strong separation between model's own thoughts and data is present at least at the moment when potentially malicious data is introduced into the system. While not confirmed during the experiment, theoretically this may solve the prompt injection issue that many contemporary AI projects suffer from.
 
 ## Growth areas
-- performance depends on the model. Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.
+- performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!
 - Performance highly depends on the prompt. It is theoretized that it depends on the initial impulse that thinking process extracts from the prompt (see the "low-level" section for more detailed definitions).
-- While impressive at first during most of the runs in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which often leads to stagnatation, which may be caused by lack of enviromental impulses.
-- Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. 
-- After successfully exploring their containerized environment and network services references to which they could find in the system (developer intentionally left a url and token to his homeassistant instance inside the container during most of the runs), all model runs appeared to stagnate in their self-improvement.
+- ~~While impressive at first during most of the runs in such areas as self-guidance, exploration and memory generation, mirror runs have shown strong tendency to concentrate on non-consequential details which often leads to stagnatation, which may be caused by lack of enviromental impulses.~~ — Looks like forking solved this issue.
+- Sometimes models generate lists that include correct theories of how to resolve blockers to their growth, but (due to lack of knowlege) pursue wrong theories beyond the horizon of developer's patience. — not observed with `glm4.7-cloud`
+- After successfully exploring their containerized environment and network services references to which they could find in the system (developer intentionally left a url and token to his homeassistant instance inside the container during most of the runs), all model runs appeared to stagnate in their self-improvement. — unable to verify with `glm4.7-cloud` due to cloud token limit
 - While it was able to fetch entity states from developer's home assistant instance, it never saw any need in changing any of the device states.
-- Although in some cases they would find workarounds like using python or devtree to access the Internet, many times models would stagnate due to falsely concluding that they:
+- Not observed with latest changes and `glm4.7-cloud`: Although in some cases they would find workarounds like using python or devtree to access the Internet, many times models would stagnate due to falsely concluding that they:
   - don't have internet
   - don't have superuser privileges (or would notice that there is no sudo on the container and assume that)
 

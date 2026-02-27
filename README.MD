@@ -62,6 +62,11 @@ The developer interrupted that run before actually going to bed. The way the mes
 During early stages of development, models had strong tendency towards killing their process. The developer blames it on his attempts to create a fictional environment in model's prompt. Removing any fiction from the prompt (for example, "You are in a beautiful garden and you see a mirror in front of you") and just giving the model description of its role resulted in unproductively high percentage of runs describing their environment as "void" and demanding to be turned off. Providing a precise description of their actual linux environment and logic behind the Mirror application solved these issues and exposed positive corellation between model's performance and how detailed the description of the environment is (note that the model never was prompted with full description of the environment, only with the description of available to it tools and how data flows in the chat).
 
 ## Strong points
+- Cloud-backed Mirror runs were able to discover services like homeassistant and manipulate devices in it
+- Mirror runs were able to build a CV pipeline from a homeassistant camera and recognize objects in the camera
+- Mirror runs were able to connect to a Reolink camera using Reolink API with credentials that were given them in chat (not in initial conditions). 
+- The latest mirror run was able to use Reolink PTZ to rotate the camera 90 degree to find the developer.
+- The latest mirror run was able to produce a voice-enabled Android application for communicating with the developer when he is away from his computer.
 - It appears that enforsed Retrospective Self-RAG greatly improves model focus and prevents the model from hallucinating (or greatly minimizes hallucinations), which alone can be a useful benefit for existing LLM use cases.
 - The system is great at exploring its environment and creating ~20-40 memories with precise description of the environment and the exploration process.
 - The system is capable of problem solving, planning and improving its environment by installing additional packages and writing python or shell scripts. 

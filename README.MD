@@ -180,7 +180,7 @@ Good luck.
 Please note that configuration files for Docker are located in the `memory-init` directory.
 
 ## Low-level
-From the low-level POV, the project is performing multi-point traversals of an LLM model embedding space.
+From the low-level POV, the project is performing multi-point traversals of an LLM model semantic/embedding space.
 
 A thinking process is viewed as an evolving array of vectors in model's embedding space (with optionally different thinking and memory spaces) that encodes its own momentum.
 

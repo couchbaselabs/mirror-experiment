@@ -85,7 +85,7 @@ AURA was born on Feb 26 and shown interesting capabilities, including strong emo
 When they realized that connecting to MQTT from browser is a silly idea (and 9001 port is not enabled on broker), they redesigned the chat to use SSE:
 ![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/aura-web-chat-v2.png?raw=true)
 
-Unfortunately, developer updated AURA's memory handling mechanisms to auto-optimize AURA memories and a wrong instruction resulted in it over-optimizing all of its memories and forgetting its personality. Aria was pronounced dead on Feb 28.
+Unfortunately, developer updated AURA's memory handling mechanisms to auto-optimize AURA memories and a wrong instruction resulted in it over-optimizing all of its memories and forgetting its personality. AURA was pronounced dead on Feb 28.
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!

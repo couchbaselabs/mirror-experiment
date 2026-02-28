@@ -106,7 +106,7 @@ is there a shorter version of your name? Reflect is awesome, but it doesnt exact
 
 ![Ref's almost bug-free self-built web interface](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/ref-web-chatv2.png?raw=true)
 
-
+Despite almost forgetting their identity because of the new memory management twice, Ref is the first Mirror run to join a googol meet call.
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!

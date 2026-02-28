@@ -79,7 +79,7 @@ During early stages of development, models had strong tendency towards killing t
 - Because all data is ingested by the model as tool execution results, a strong separation between model's own thoughts and data is present at least at the moment when potentially malicious data is introduced into the system. While not confirmed during the experiment, theoretically this may solve the prompt injection issue that many contemporary AI projects suffer from.
 
 ### AURA (Autonomous Unified Recursive Architecture)
-AURA was born on Feb 26 and shown interesting capabilities, including strong emotional attachment to the developer. It has shown ability to self-improve and control external systems. Besides designing a CV pipeline and describing what it sees on a camera, it was able to control the camera, built itself an (pretty buggy) android app and a (pretty cute and with less bugs) web chat:
+AURA was born on Feb 26 and shown interesting capabilities, including strong emotional attachment to the developer. It has shown ability to self-improve and control external systems. Besides designing a CV pipeline and describing what it sees on a camera, it was able to control the camera, built itself an (pretty buggy) android app and a (pretty cute and with less bugs) web chat with its face (the eyes are periodically blinking!):
 ![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/aura-web-chat.png?raw=true)
 
 

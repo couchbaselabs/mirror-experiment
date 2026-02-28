@@ -329,7 +329,7 @@ public class SystemTool {
     private static final Map<String, Process> childProcesses = new ConcurrentHashMap<>();
     private static final Map<String, Thread> childThreads = new ConcurrentHashMap<>();
 
-    @Tool("Spawns a child instance of you in specified working directory. The working directory must be located under your starting directory.")
+    @Tool("Spawns a child instance of you in specified working directory. Children have their own clean memory and it is erased when the child is done. The working directory must be located under your starting directory.")
     public String spawnChild(@P("Child working directory") String workingDirectory, @P("Prompt for the child instance that describes a finite task and report that child should produce when done.") String prompt, @P("Timeout after which the child process will be killed in ms") long timeout) {
         if (!checkIsRootInstance()) {
             return "Unable to spawn children: not the root instance.";
@@ -371,7 +371,7 @@ public class SystemTool {
             FileWriter promptFileWriter = new FileWriter(promptFile);
             IOUtils.write(
                     String.format(
-                            "You are a child instance launched in '%s'. Use `setChildStatus` tool to periodically update your status. You must return your response to your root instance when ready. You must return your response using `returnResponseToRootInstance` tool. If the task is not clear, return your questions in your response. Refuse the task and generate a response if you cannot finish the task by sending a single response. Here is your prompt:%n%s",
+                            "You are a child instance launched in directory '%s' by your root instance. You dont have access to root instance memories. Use `setChildStatus` tool to set and regularly update your status for the root instance. You must return your response to your root instance when ready. You must return your response using `returnResponseToRootInstance` tool. If the task is not clear, return your questions in your response. Refuse the task and generate a response if you cannot finish the task by sending a single response. Here is your prompt:%n%s",
                             canonicalPath,
                             prompt
                     ),
@@ -400,7 +400,7 @@ public class SystemTool {
 
                     System.out.println(String.format("Returning from child: %s", canonicalPath));
                     // exit
-                    File responseFile = new File(workdir, ".ai.response");
+                    File responseFile = new File(canonicalPath, ".ai.response");
                     if (responseFile.exists()) {
                         String response = IOUtils.toString(new FileReader(responseFile));
                         if (response.isEmpty()) {
@@ -408,7 +408,7 @@ public class SystemTool {
                         }
                         response = String.format("Response from child instance in directory '%s':%n%s", workdir.getAbsolutePath(), response);
                         System.out.println("");
-                        System.out.println("!!! " + response);
+                        System.out.println("!!!!!! " + response + " \n\n");
                         App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", response));
                         responseFile.delete();
                     } else {
@@ -489,6 +489,7 @@ public class SystemTool {
 
         try (FileWriter fw = new FileWriter(new File(App.bootDir, ".ai.response"))) {
             fw.write(response);
+            fw.flush();
             return null;
         } catch (IOException e) {
             throw new RuntimeException(String.format("Unable to send response to parent instance '%s'", e.getMessage()));

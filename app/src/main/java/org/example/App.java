@@ -189,15 +189,16 @@ public class App {
                     final String text = message.text();
                     System.out.println(text);
                     autorecall = memoryTool.recall(injectTag(text), false);
-                    memoryTool.updateMemory(autorecall);
+                    memoryTool.updateMemory(String.format("Current thoughts: %s%n%nOld memories: %s%n", injectTag(text), autorecall));
+                    autorecall = memoryTool.generalize(autorecall);
                 } else {
                     LOG.info("No text response found.");
                     autorecall = memoryTool.recall(injectTag("What is my state?"));
-                    messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
-                    System.out.println("============[ autorecall ]============");
-                    System.out.println(autorecall);
-                    System.out.println("======================================");
                 }
+                System.out.println("============[ autorecall ]============");
+                System.out.println(autorecall);
+                System.out.println("======================================");
+                messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
 
                 return;
             }
@@ -546,10 +547,11 @@ public class App {
                 LOG.info("Checking if root instance: {}", isRoot);
                 return ToolExecutionResultMessage.from(request, String.format("Is root instance? %s", String.valueOf(isRoot)));
             } else if (request.name().equals("returnResponseToRootInstance")) {
-                LOG.info("[{}] Returning response.", App.bootDir.getAbsolutePath());
                 try {
+                    LOG.info("[{}] Returning response.", App.bootDir.getAbsolutePath());
                     systemTool.returnResponseToRootInstance(args.get("arg0").toString());
                     memoryTool.clearSpawn();
+                    Thread.sleep(100l);
                     System.exit(0);
                 }  catch (Exception e) {
                     return ToolExecutionResultMessage.from(request, e.getMessage());

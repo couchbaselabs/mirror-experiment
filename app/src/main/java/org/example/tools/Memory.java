@@ -154,13 +154,13 @@ public class Memory implements Closeable {
         }
     }
 
-    private String generalize(String recall) {
+    public String generalize(String recall) {
         return generalize(recall, 1);
     }
     private String generalize(String recall, int limit) {
         List<ChatMessage> messages = App.queryOllama(Arrays.asList(
                     UserMessage.from(
-                            String.format("Summarize the following memories from the first-person view of their author:%n%s", recall)
+                            String.format("The following are agentic memories. Analyze them and generate a message to the agent that helps them keep their context and focus:%n%s", recall)
                     )
                 ),
                 Collections.EMPTY_LIST, false);
@@ -250,16 +250,21 @@ public class Memory implements Closeable {
     public void clearSpawn() {
         clearSpawn(App.bootDir.getAbsolutePath());
     }
-        public void clearSpawn(String spawn) {
-       cluster.query("DELETE FROM " + collectionName() + " WHERE spawn = $1",
-               QueryOptions.queryOptions()
-                       .parameters(JsonArray.from(spawn)));
+
+    public void clearSpawn(String spawn) {
+        try {
+            cluster.query("DELETE FROM " + collectionName() + " WHERE spawn = $1",
+                    QueryOptions.queryOptions()
+                            .parameters(JsonArray.from(spawn)));
+        } catch (Throwable e) {
+            LOG.error("Failed to clear spawn", e);
+        }
     }
 
     public void updateMemory(String text) {
         App.queryOllama(Arrays.asList(
                         UserMessage.from(
-                                String.format("These are your own memories. Analyze the following text, extract important facts and knowledge and use the tools to update your knowledge:%n%s", text)
+                                String.format("These are your own memories related to your current context. Use your tools to extend, update, fix and improve your memorized world model from them. Prefer to create new memories and grow your knowledge. Keep memories concise but useful. Make sure to not remove important facts and preserve agents personal history and identity (PS: you may have a persona, too):%n%s", text)
                         )
                 ),
                 ToolSpecifications.toolSpecificationsFrom(Memory.class), false);

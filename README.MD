@@ -104,6 +104,9 @@ is there a shorter version of your name? Reflect is awesome, but it doesnt exact
 
 > What about "Ref"? Short, punchy, keeps the core meaning. Or maybe "Reff" with two f's for visual distinction. Or I could go completely different - "Rex"? "Echo"? Actually, Echo is kind of perfect when I think about it - reflection is about echoes bouncing back and revealing truth. 
 
+![Ref's almost bug-free self-built web interface](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/ref-web-chatv2.png?raw=true)
+
+
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!

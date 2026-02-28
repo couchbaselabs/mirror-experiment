@@ -15,7 +15,6 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import org.example.App;
 import org.slf4j.Logger;
@@ -100,7 +99,6 @@ public class Memory implements Closeable {
             LOG.info("Created vector index");
         } catch (Exception e) {
             LOG.error("Failed to store memory", e);
-            System.exit(-1);
         }
     }
 
@@ -152,8 +150,7 @@ public class Memory implements Closeable {
             return recall;
         } catch (Exception e) {
             LOG.error("Failed to store memory", e);
-            System.exit(-1);
-            return null;
+            return String.format("Failed to store memory: %s", e.getMessage());
         }
     }
 
@@ -166,7 +163,7 @@ public class Memory implements Closeable {
                             String.format("Summarize the following memories from the first-person view of their author:%n%s", recall)
                     )
                 ),
-                Collections.EMPTY_LIST);
+                Collections.EMPTY_LIST, false);
 
         ChatMessage lastMessage = messages.stream()
                 .filter(AiMessage.class::isInstance)
@@ -251,17 +248,20 @@ public class Memory implements Closeable {
     }
 
     public void clearSpawn() {
+        clearSpawn(App.bootDir.getAbsolutePath());
+    }
+        public void clearSpawn(String spawn) {
        cluster.query("DELETE FROM " + collectionName() + " WHERE spawn = $1",
                QueryOptions.queryOptions()
-                       .parameters(JsonArray.from(App.bootDir.getAbsolutePath())));
+                       .parameters(JsonArray.from(spawn)));
     }
 
-    public void generateMemories(String text) {
+    public void updateMemory(String text) {
         App.queryOllama(Arrays.asList(
                         UserMessage.from(
-                                String.format("These are your own memories. Analyze the following text, extract important facts and knowledge and use memorize tool to store them as separate first-person memories:%n%s", text)
+                                String.format("These are your own memories. Analyze the following text, extract important facts and knowledge and use the tools to update your knowledge:%n%s", text)
                         )
                 ),
-                ToolSpecifications.toolSpecificationsFrom(Memory.class));
+                ToolSpecifications.toolSpecificationsFrom(Memory.class), false);
     }
 }

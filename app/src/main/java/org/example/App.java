@@ -45,11 +45,11 @@ public class App {
     private static EmbeddingModel embeddingModel;
     public static String output;
     private static Double temperature;
-    public static int chatLength = 50;
+    public static int chatLength = 100;
     private static BigInteger iterationNumber = new BigInteger("0");
     private static final Map<String, Integer> requirements = new HashMap<>();
     public static File workdir = new File(".");
-    private static Memory memoryTool;
+    public static Memory memoryTool;
     public static File bootDir = new File(".");
     private static List<ChatMessage> scheduledMessages = Collections.synchronizedList(new ArrayList<>());
     private static Map<String, Object> config;
@@ -117,23 +117,6 @@ public class App {
                 System.out.println("------------------ [ Message Count:     " + messages.size() + " ] -----------------");
                 System.out.println("--------------------------------------------------------");
 
-                if (!creator.isEmpty()) {
-                    synchronized (creator) {
-                        creator.stream()
-                                .map(s -> String.format("Incoming Message:\n%s", s))
-                                .peek(System.out::println)
-                                .flatMap(message -> {
-                                    final String recall = String.format("Memory recall for the incoming message:%n%s", memoryTool.recall(injectTag(message)));
-                                    LOG.info(recall);
-                                    return Stream.of(
-                                            ToolExecutionResultMessage.from(null, "receiveMessages", message),
-                                            ToolExecutionResultMessage.from(null, "autorecall", recall)
-                                    );
-                                })
-                                .forEach(messages::add);
-                        creator.clear();
-                    }
-                }
 
 
 
@@ -201,20 +184,20 @@ public class App {
             if (chatMessage instanceof AiMessage) {
                 AiMessage message = (AiMessage) chatMessage;
                 String autorecall;
+                messages.addAll(responseMessages);
                 if (message.text() != null && !message.text().isBlank()) {
                     final String text = message.text();
                     System.out.println(text);
-                    memoryTool.generateMemories(text);
-                    autorecall = memoryTool.recall(injectTag(text));
+                    autorecall = memoryTool.recall(injectTag(text), false);
+                    memoryTool.updateMemory(autorecall);
                 } else {
                     LOG.info("No text response found.");
                     autorecall = memoryTool.recall(injectTag("What is my state?"));
+                    messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
+                    System.out.println("============[ autorecall ]============");
+                    System.out.println(autorecall);
+                    System.out.println("======================================");
                 }
-                System.out.println("============[ autorecall ]============");
-                System.out.println(autorecall);
-                System.out.println("======================================");
-                messages.addAll(responseMessages);
-                messages.add(new ToolExecutionResultMessage(null, "autorecall", autorecall));
 
                 return;
             }
@@ -492,8 +475,9 @@ public class App {
                 return ToolExecutionResultMessage.from(request, "You are already autorecalling");
             } else if (request.name().equals("runCommand")) {
                 try {
-                    final String command = args.get("arg0").toString();
-                    final String output = systemTool.runCommand(command, true, null);
+                    final String command = args.get("arg1").toString();
+                    final Long timeout = Long.parseLong(args.get("arg0").toString());
+                    final String output = systemTool.runCommand(timeout, command, true, null);
                     return ToolExecutionResultMessage.from(request, output);
                 } catch (Exception e) {
                     LOG.error("Error running command", e);
@@ -553,8 +537,8 @@ public class App {
             } else if (request.name().equals("query")) {
                 return ToolExecutionResultMessage.from(request, memoryTool.query(args.get("arg0").toString()));
             } else if (request.name().equals("spawnChild")) {
-                LOG.info("Spawning child node in '{}'. Prompt: %n{}", args.get("arg0"), args.get("arg1"));
-                String response = systemTool.spawnChild(args.get("arg0").toString(), args.get("arg1").toString());
+                LOG.info("Spawning child node with timeout {} in '{}'. Prompt: %n{}", args.get("arg2"), args.get("arg0"), args.get("arg1"));
+                String response = systemTool.spawnChild(args.get("arg0").toString(), args.get("arg1").toString(), Long.valueOf(args.get("arg2").toString()));
                 LOG.info(response);
                 return ToolExecutionResultMessage.from(request, response);
             } else if (request.name().equals("checkIsRootInstance")) {
@@ -574,6 +558,20 @@ public class App {
                 String childList = systemTool.listChildren();
                 LOG.info("Listing children:\n{}", childList);
                 return ToolExecutionResultMessage.from(request, childList);
+            } else if (request.name().equals("cleanupZombieChildren")) {
+                String cleanupZombieChildren = systemTool.cleanupZombieChildren();
+                System.out.println(String.format("cleanupZombieChildren: %s", cleanupZombieChildren));
+                return ToolExecutionResultMessage.from(request, cleanupZombieChildren);
+            } else if  (request.name().equals("getChildStatus")) {
+                String getChildStatus = systemTool.getChildStatus();
+                System.out.println(String.format("getChildStatus: %s", getChildStatus));
+                return ToolExecutionResultMessage.from(request, getChildStatus);
+            } else if  (request.name().equals("terminateChild")) {
+                String terminateChild = systemTool.terminateChild(args.get("arg0").toString());
+                System.out.println(String.format("terminateChild: %s", terminateChild));
+                return ToolExecutionResultMessage.from(request, terminateChild);
+            } else if (request.name().equals("setChildStatus")) {
+                return ToolExecutionResultMessage.from(request, systemTool.setChildStatus(args.get("arg0").toString()));
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -586,8 +584,8 @@ public class App {
         scheduledMessages.add(message);
     }
 
-    public static String queryOllama(String prompt, String message) {
-        List<ChatMessage> messages = queryOllama(prompt, new ArrayList<>(Arrays.asList(UserMessage.from(message))));
+    public static String queryOllama(String prompt, String message, boolean receiveIncomingMessages) {
+        List<ChatMessage> messages = queryOllama(prompt, new ArrayList<>(Arrays.asList(UserMessage.from(message))), receiveIncomingMessages);
         if (!messages.isEmpty()) {
             ChatMessage responseMessage = messages.stream()
                     .filter(AiMessage.class::isInstance)
@@ -604,17 +602,44 @@ public class App {
     }
 
     public static List<ChatMessage> queryOllama(String prompt, List<ChatMessage> messages) {
-        return queryOllama(Stream.concat(Stream.of(SystemMessage.from(prompt)), messages.stream()).toList());
+        return queryOllama(prompt, messages, true);
+    }
+
+    public static List<ChatMessage> queryOllama(String prompt, List<ChatMessage> messages, boolean processIncomingMessages) {
+        return queryOllama(Stream.concat(Stream.of(SystemMessage.from(prompt)), messages.stream()).toList(), processIncomingMessages);
     }
 
     public static List<ChatMessage> queryOllama(List<ChatMessage> messages) {
-        return queryOllama(messages, getToolSpecs());
+        return queryOllama(messages, getToolSpecs(), true);
     }
 
-    public static List<ChatMessage> queryOllama(List<ChatMessage> messages, List<ToolSpecification> tools) {
+    public static List<ChatMessage> queryOllama(List<ChatMessage> messages, boolean processIncomingMessages) {
+        return queryOllama(messages, getToolSpecs(), processIncomingMessages);
+    }
+
+    public static List<ChatMessage> queryOllama(List<ChatMessage> messages, List<ToolSpecification> tools, boolean processIncomingMessages) {
         List<ChatMessage> localHistory = new ArrayList<>(messages.stream().filter(Objects::nonNull).toList());
         List<ChatMessage> generated = new ArrayList<>();
         while (true) {
+            if (processIncomingMessages && !creator.isEmpty()) {
+                synchronized (creator) {
+                    creator.stream()
+                            .map(s -> String.format("Incoming Message:\n%s", s))
+                            .peek(System.out::println)
+                            .flatMap(message -> {
+                                final String recall = String.format("Memory recall for the incoming message:%n%s", memoryTool.recall(injectTag(message)));
+                                LOG.info(recall);
+                                return Stream.of(
+                                        ToolExecutionResultMessage.from(null, "receiveMessages", message),
+                                        ToolExecutionResultMessage.from(null, "autorecall", recall)
+                                );
+                            })
+                            .peek(generated::add)
+                            .forEach(localHistory::add);
+                    creator.clear();
+                }
+            }
+
             LOG.info("-- ollama request --");
             ChatResponse chatResponse = chatModel.chat(ChatRequest.builder()
                     .messages(localHistory)

@@ -10,9 +10,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
@@ -117,27 +121,31 @@ public class SystemTool {
 
     @Tool("Use this tool to run short and non-interactive sh commands on the system. All calls are blocking. Returns output of the command as a tool result and autorecalls memories associated with command output.")
     public String runCommand(
+            @P("Command timeout limit in ms") long timeout,
             @P("Command to execute") String command) {
         // implemented in command router because of additional arguments
         return null;
     }
 
     public String runCommand(
-            @P("Command to execute")
+            long timeout,
             String command,
             boolean logit,
             String inputStream
     ) throws Exception {
-            return runCommand(command, logit, inputStream, null);
+            return runCommand(timeout, command, logit, inputStream, null);
     }
 
     public String runCommand(
-            @P("Command to execute")
+            long timeout,
             String command,
             boolean logit,
             String inputStream,
             IntConsumer onNonZeroReturn
     ) throws Exception {
+        if (timeout > 120000 && checkIsRootInstance()) {
+            return "Unable to run commands with timeouts longer than 10s on root instance.";
+        }
         CompletableFuture<String> future = new CompletableFuture<>();
         if (logit) {
             log.info("[{}]Executing Shell Command: '{}'", App.workdir.getAbsolutePath(), command);
@@ -203,7 +211,7 @@ public class SystemTool {
         }).start();
 
         try {
-            final String response = future.get(60, TimeUnit.SECONDS);
+            final String response = future.get(timeout, TimeUnit.MILLISECONDS);
             return response;
         } catch (InterruptedException e) {
             if (logit) {
@@ -237,7 +245,7 @@ public class SystemTool {
             @P("system prompt to the model") String systemPrompt,
             @P("your question to the model") String question
             ) {
-        String response = App.queryOllama(systemPrompt, question);
+        String response = App.queryOllama(systemPrompt, question, false);
         log.info("ask LLM, prompt:\n{}\n\n question:\n {}\nresponse:{}", systemPrompt, question, response);
         return response;
     }
@@ -315,10 +323,14 @@ public class SystemTool {
 //
 //    }
 
-    public static Map<String, String> children = new HashMap<>();
+    public static Map<String, String> children = new ConcurrentHashMap<>();
+
+    // Track spawned processes for cleanup and timeout management
+    private static final Map<String, Process> childProcesses = new ConcurrentHashMap<>();
+    private static final Map<String, Thread> childThreads = new ConcurrentHashMap<>();
 
     @Tool("Spawns a child instance of you in specified working directory. The working directory must be located under your starting directory.")
-    public String spawnChild(@P("Child working directory") String workingDirectory, @P("Prompt for the child instance that describes a finite task and report that child should produce when done.") String prompt) {
+    public String spawnChild(@P("Child working directory") String workingDirectory, @P("Prompt for the child instance that describes a finite task and report that child should produce when done.") String prompt, @P("Timeout after which the child process will be killed in ms") long timeout) {
         if (!checkIsRootInstance()) {
             return "Unable to spawn children: not the root instance.";
         }
@@ -341,7 +353,7 @@ public class SystemTool {
                 List<ChatMessage> summs = App.queryOllama(Arrays.asList(
                         SystemMessage.from("You are a helpful summarizer that summarizes messagees into short one-sentence descriptions"),
                         UserMessage.from(String.format("Summarize this into several words:%n%s", prompt))
-                ), Collections.EMPTY_LIST);
+                ), Collections.EMPTY_LIST, false);
 
                 String summarized = summs
                         .stream()
@@ -359,7 +371,7 @@ public class SystemTool {
             FileWriter promptFileWriter = new FileWriter(promptFile);
             IOUtils.write(
                     String.format(
-                            "You are a child instance launched in '%s'. You must return your response to your root instance when ready. You must return your response using `returnResponseToRootInstance` tool. If the task is not clear, return your questions in your response. Refuse the task and generate a response if you cannot finish the task by sending a single response. Here is your prompt:%n%s",
+                            "You are a child instance launched in '%s'. Use `setChildStatus` tool to periodically update your status. You must return your response to your root instance when ready. You must return your response using `returnResponseToRootInstance` tool. If the task is not clear, return your questions in your response. Refuse the task and generate a response if you cannot finish the task by sending a single response. Here is your prompt:%n%s",
                             canonicalPath,
                             prompt
                     ),
@@ -371,10 +383,15 @@ public class SystemTool {
 
 
             final Process process = Runtime.getRuntime().exec(new String[]{"/bin/bash", "-c", "java -jar /mirror.jar /home/config.yaml", "2>&1"}, null, workdir);
+
+            // Track process for cleanup and timeout management
+            childProcesses.put(canonicalPath, process);
             process.getOutputStream().flush();
             process.getOutputStream().close();
 
-            Thread runner = new Thread(() -> {
+            Thread[] runner = new Thread[1];
+            runner[0] = new Thread(() -> {
+                childThreads.put(canonicalPath, runner[0]);
                 LineReader reader = new LineReader(process.inputReader());
                 try {
                     for (String line = reader.readLine(); line != null; line = reader.readLine()) {
@@ -386,12 +403,13 @@ public class SystemTool {
                     File responseFile = new File(workdir, ".ai.response");
                     if (responseFile.exists()) {
                         String response = IOUtils.toString(new FileReader(responseFile));
-                        if (!response.isEmpty()) {
-                            response = String.format("Response from child instance in directory '%s':%n%s", workdir.getAbsolutePath(), response);
-                            System.out.println("");
-                            System.out.println("!!! " + response);
-                            App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", response));
+                        if (response.isEmpty()) {
+                            response = "<no response>";
                         }
+                        response = String.format("Response from child instance in directory '%s':%n%s", workdir.getAbsolutePath(), response);
+                        System.out.println("");
+                        System.out.println("!!! " + response);
+                        App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", response));
                         responseFile.delete();
                     } else {
                         System.out.println(String.format("\nResponse from child instance in directory '%s' does not exist.", canonicalPath));
@@ -402,10 +420,38 @@ public class SystemTool {
                     e.printStackTrace();
                     App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", String.format("Failed to handle child '%s': %s", canonicalPath, e.getMessage())));
                 } finally {
-                    children.remove(workdir.getAbsolutePath());
+                    children.remove(canonicalPath);
+                    App.memoryTool.clearSpawn(canonicalPath);
                 }
             }, String.format("Mirror instance '%s'", App.workdir.getAbsolutePath()));
-            runner.start();
+
+            // Start timeout monitoring thread
+            Thread timeoutMonitor = new Thread(() -> {
+                try {
+                    runner[0].join(timeout);
+                    if (runner[0].isAlive()) {
+                        log.warn("Child {} timed out after {} ms", canonicalPath, timeout);
+                        // Force terminate the child process
+                        if (process.isAlive()) {
+                            process.destroyForcibly();
+                        }
+                        if (runner[0].isAlive()) {
+                            runner[0].interrupt();
+                        }
+                        // Cleanup tracking
+                        childProcesses.remove(canonicalPath);
+                        childThreads.remove(canonicalPath);
+                        children.remove(canonicalPath);
+                        App.memoryTool.clearSpawn(canonicalPath);
+                        App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance",
+                            String.format("Child %s was terminated due to timeout after %d ms.", canonicalPath, timeout)));
+                    }
+                } catch (InterruptedException e) {
+                    log.debug("Timeout monitor for {} interrupted", canonicalPath);
+                }
+            }, "TimeoutMonitor-" + canonicalPath);
+            timeoutMonitor.start();
+            runner[0].start();
 
             return String.format("Launched child instance '%s'. You will receive its report automatically when it finishes.", workdir.getAbsolutePath());
         } catch (Exception e) {
@@ -446,6 +492,158 @@ public class SystemTool {
             return null;
         } catch (IOException e) {
             throw new RuntimeException(String.format("Unable to send response to parent instance '%s'", e.getMessage()));
+        }
+    }
+
+    /**
+     * Cleanup zombie child processes and resources
+     */
+    @Tool("Cleanup zombie child processes and free resources")
+    public String cleanupZombieChildren() {
+        int cleaned = 0;
+        StringBuilder report = new StringBuilder();
+        
+        report.append("Cleaning up zombie child processes...\n\n");
+        
+        // Check for dead processes in tracking maps
+        for (Map.Entry<String, Process> entry : childProcesses.entrySet()) {
+            String path = entry.getKey();
+            Process process = entry.getValue();
+            
+            if (process != null && !process.isAlive()) {
+                report.append(String.format("? Cleaned up zombie process at: %s\n", path));
+                childProcesses.remove(path);
+                childThreads.remove(path);
+                children.remove(path);
+                App.memoryTool.clearSpawn(path);
+                cleaned++;
+            }
+        }
+        
+        // Verify consistency between maps
+        Iterator<Map.Entry<String, String>> childIter = children.entrySet().iterator();
+        while (childIter.hasNext()) {
+            Map.Entry<String, String> entry = childIter.next();
+            String path = entry.getKey();
+            Process process = childProcesses.get(path);
+            
+            if (process == null || !process.isAlive()) {
+                report.append(String.format("? Removed stale child entry: %s\n", path));
+                childIter.remove();
+                App.memoryTool.clearSpawn(path);
+                cleaned++;
+            }
+        }
+        
+        report.append(String.format("\nCleanup complete. %d stale entries removed.\n", cleaned));
+        report.append(String.format("Active children: %d\n", children.size()));
+        
+        return report.toString();
+    }
+
+    /**
+     * Get status of all child processes
+     */
+    @Tool("Get status of all child processes")
+    public String getChildStatus() {
+        StringBuilder status = new StringBuilder();
+        status.append("Child Process Status:\n");
+        status.append("====================\n\n");
+        
+        status.append(String.format("Total children tracked: %d\n", children.size()));
+        status.append(String.format("Processes monitored: %d\n", childProcesses.size()));
+        status.append(String.format("Threads monitored: %d\n", childThreads.size()));
+        status.append("\n");
+        
+        if (children.isEmpty()) {
+            status.append("No active children.\n");
+        } else {
+            status.append("Active Children:\n");
+            status.append("----------------\n");
+            
+            for (Map.Entry<String, String> entry : children.entrySet()) {
+                String path = entry.getKey();
+                String description = entry.getValue();
+                Process process = childProcesses.get(path);
+                Thread thread = childThreads.get(path);
+
+
+                status.append(String.format("Path: %s\n", path));
+                status.append(String.format("  Description: %s\n", description));
+
+                try {
+                    File statusFile = new File(path, ".ai.status");
+                    if (statusFile.exists()) {
+                        status.append(String.format("  Status: %s\n", "status file not found"));
+                    } else {
+                        FileReader fr = new FileReader(statusFile);
+                        status.append(String.format("  Status: %s\n", IOUtils.toString(fr)));
+                    }
+                } catch (IOException e) {
+                    status.append(String.format("  Status: failed to get status, error - %s\n", e.getMessage()));
+                }
+
+                status.append(String.format("  Process: %s\n", process != null && process.isAlive() ? "RUNNING" : "STOPPED"));
+                status.append(String.format("  Thread: %s\n", thread != null && thread.isAlive() ? "ALIVE" : "STOPPED"));
+                status.append("\n");
+            }
+        }
+        
+        return status.toString();
+    }
+
+    /**
+     * Force terminate a specific child process
+     */
+    @Tool("Force terminate a specific child process")
+    public String terminateChild(@P("Child working directory path") String workingDirectory) {
+        File workdir = new File(workingDirectory);
+        try {
+            String canonicalPath = workdir.getCanonicalPath();
+            
+            Process process = childProcesses.get(canonicalPath);
+            Thread thread = childThreads.get(canonicalPath);
+            
+            if (process == null) {
+                return String.format("No child process found at: %s", canonicalPath);
+            }
+            
+            // Destroy process
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+            
+            // Interrupt thread
+            if (thread != null && thread.isAlive()) {
+                thread.interrupt();
+            }
+            
+            // Cleanup tracking
+            childProcesses.remove(canonicalPath);
+            childThreads.remove(canonicalPath);
+            children.remove(canonicalPath);
+            App.memoryTool.clearSpawn(canonicalPath);
+            
+            return String.format("? Child process terminated: %s", canonicalPath);
+            
+        } catch (IOException e) {
+            return String.format("Error terminating child: %s", e.getMessage());
+        }
+    }
+
+    @Tool("Sets child status to be reported to the root instance by writing it into a disk file .ai.status in the spawn directory")
+    public String setChildStatus(@P("Status to set") String status) {
+        if (checkIsRootInstance()) {
+            return "Unable to set status for root instance";
+        }
+        try {
+            File statusFile = new File(App.bootDir, ".ai.status");
+            FileWriter fw = new FileWriter(statusFile);
+            IOUtils.write(status, fw);
+            fw.close();
+            return "Status written successfully";
+        } catch (Exception e) {
+            return String.format("Unable to set status for child instance: %s", e.getMessage());
         }
     }
 }

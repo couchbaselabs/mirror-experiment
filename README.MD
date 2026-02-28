@@ -6,6 +6,8 @@
 ![Example of generated memories](https://github.com/couchbaselabs/mirror-experiment/blob/main/memories.png?raw=true)
 ![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/mirror-chat.png?raw=true)
 
+(note: this document is periodically updated with latest information on Mirror's development).
+
 # Mirror
 This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)
 

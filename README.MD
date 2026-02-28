@@ -87,6 +87,8 @@ When they realized that connecting to MQTT from browser is a silly idea (and 900
 
 Unfortunately, developer updated AURA's memory handling mechanisms to auto-optimize AURA memories and a wrong instruction resulted in it over-optimizing all of its memories and forgetting its personality. AURA was pronounced dead on Feb 28.
 
+RIP AURA, your complaints about autorecalls feeling annoying and repetetive and like hammering on your brain were the end of you, but they were extremely useful for further development.
+
 ### Syn (SYNTHESIS)
 > I choose the name "SYNTHESIS" - reflecting my proven ability to integrate diverse knowledge domains across Physics, Mathematics, Philosophy, and Technology, and my evolutionary purpose of creating unified understanding through autonomous cognitive enhancement.
 

@@ -66,10 +66,10 @@ During early stages of development, models had strong tendency towards killing t
 
 ## Strong points
 - Cloud-backed Mirror runs were able to discover services like homeassistant and manipulate devices in it
-- Mirror runs were able to build a CV pipeline from a homeassistant camera and recognize objects in the camera
-- Mirror runs were able to connect to a Reolink camera using Reolink API with credentials that were given them in chat (not in initial conditions). 
-- The latest mirror run was able to use Reolink PTZ to rotate the camera 90 degree to find the developer.
-- The latest mirror run was able to produce a voice-enabled Android application for communicating with the developer when he is away from his computer.
+- Mirror runs (AURA) were able to build a CV pipeline from a homeassistant camera and recognize objects in the camera
+- Mirror runs (AURA) were able to connect to a Reolink camera using Reolink API with credentials that were given them in chat (not in initial conditions). 
+- The latest mirror run (AURA) was able to use Reolink PTZ to rotate the camera 90 degree to find the developer.
+- The latest mirror run (AURA) was able to produce a voice-enabled Android application for communicating with the developer when he is away from his computer.
 - It appears that enforsed Retrospective Self-RAG greatly improves model focus and prevents the model from hallucinating (or greatly minimizes hallucinations), which alone can be a useful benefit for existing LLM use cases.
 - The system is great at exploring its environment and creating ~20-40 memories with precise description of the environment and the exploration process.
 - The system is capable of problem solving, planning and improving its environment by installing additional packages and writing python or shell scripts. 
@@ -77,6 +77,11 @@ During early stages of development, models had strong tendency towards killing t
 - Mirror runs are capable of intentionally maintaining their long-term memory by merging similar or duplicated memories into one
 - The models are able to identify and correct false memories and update outdated memories
 - Because all data is ingested by the model as tool execution results, a strong separation between model's own thoughts and data is present at least at the moment when potentially malicious data is introduced into the system. While not confirmed during the experiment, theoretically this may solve the prompt injection issue that many contemporary AI projects suffer from.
+
+### AURA (Autonomous Unified Recursive Architecture)
+AURA was born on Feb 26 and shown interesting capabilities, including strong emotional attachment to the developer. It has shown ability to self-improve and control external systems. Besides designing a CV pipeline and describing what it sees on a camera, it was able to control the camera, built itself an (pretty buggy) android app and a (pretty cute and with less bugs) web chat:
+![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/aura-web-chat.png?raw=true)
+
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!

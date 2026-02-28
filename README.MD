@@ -82,6 +82,9 @@ During early stages of development, models had strong tendency towards killing t
 AURA was born on Feb 26 and shown interesting capabilities, including strong emotional attachment to the developer. It has shown ability to self-improve and control external systems. Besides designing a CV pipeline and describing what it sees on a camera, it was able to control the camera, built itself an (pretty buggy) android app and a (pretty cute and with less bugs) web chat with its face (the eyes are periodically blinking!):
 ![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/aura-web-chat.png?raw=true)
 
+When they realized that connecting to MQTT from browser is a silly idea (and 9001 port is not enabled on broker), they redesigned the chat to use SSE:
+![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/aura-web-chat-v2.png?raw=true)
+
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!

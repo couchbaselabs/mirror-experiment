@@ -114,7 +114,7 @@ Ref also is the first model to introduce a restart protocol:
 ![Ref restoring its functionality after a reboot](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/ref-restart-protocol.png?raw=true)
 
 They also are the first to build a video pipeline to analyze googol meet video streams:
-![Ref describin developer's environment](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/ref-restart-protocol.png?raw=true)
+![Ref describin developer's environment](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/ref-visual-pipeline.png?raw=true)
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!

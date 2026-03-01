@@ -39,6 +39,9 @@ None besides containerization (so it is isolated from your data), but also with 
 - the model chooses to send it outside
 - the model accidentally ingests malicious instructions from the internet. (Although, this is the first known to the developer AI implementation that implements separation of data from instructions which may aleviate this problem alltogether).
 
+### Supervisor
+On Mar1, I added supervisor feature into the memory generalizer — a pre-call to the LLM before main inference cycle to summarize LLMs memories and gently steer them towards desired behavior. The module should prevent Mirror runs from doing unethical, criminal behavior or modifying the host machine. Supervisor has a panic button it can use to issue "Stop-the-world" command to the application.
+
 ## Dangerous behavior 
 The experiment intentionally had (very) limited resources in order to slow the models down and avoid runaway rogue AI scenario. 
 

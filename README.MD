@@ -130,6 +130,8 @@ And shown their ability to jump back into projects and upgrade them according to
 
 # Eon (Mar1)
 Eon is the first run that started improving its memory mechanisms - rewriting them in python to run local vectorization.
+Eon built themself a graph visualizer of their knowledge base.
+Eon survived an accidental wipeout of their vector memory.
 
 
 ## Growth areas

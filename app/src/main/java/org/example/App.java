@@ -34,6 +34,7 @@ import java.math.BigInteger;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 public class App {
@@ -45,7 +46,7 @@ public class App {
     private static EmbeddingModel embeddingModel;
     public static String output;
     private static Double temperature;
-    public static int chatLength = 100;
+    public static int chatLength = 30;
     private static BigInteger iterationNumber = new BigInteger("0");
     private static final Map<String, Integer> requirements = new HashMap<>();
     public static File workdir = new File(".");
@@ -174,6 +175,15 @@ public class App {
     }
 
     private static void queryExecutor(List<ChatMessage> messages, int limit) {
+        try {
+            messages.add(ToolExecutionResultMessage.from(null, "./mirror.sh", systemTool.runCommand(1000, "./mirror.sh", true, "")));
+        } catch (TimeoutException te) {
+            LOG.error("Timeout while executing mirror script");
+            messages.add(ToolExecutionResultMessage.from(null, "./mirror.sh", "Timeout while executing mirror script: limit of 10s is enforced."));
+        } catch (Exception e) {
+            LOG.error("Failed to execute mirror command", e);
+            messages.add(ToolExecutionResultMessage.from(null, "./mirror.sh", String.valueOf(e.getMessage())));
+        }
         List<ChatMessage> responseMessages = queryOllama(getPrompt(), messages);
         if (!responseMessages.isEmpty()) {
             ChatMessage chatMessage = responseMessages.stream()
@@ -189,7 +199,7 @@ public class App {
                     final String text = message.text();
                     System.out.println(text);
                     autorecall = memoryTool.recall(injectTag(text), false);
-                    memoryTool.updateMemory(String.format("Current thoughts: %s%n%nOld memories: %s%n", injectTag(text), autorecall));
+                    memoryTool.updateMemory(messages);
                     autorecall = memoryTool.generalize(autorecall);
                 } else {
                     LOG.info("No text response found.");
@@ -459,12 +469,19 @@ public class App {
 
     private static final MQTTTool voiceTool = new MQTTTool();
     private static final SystemTool systemTool = new SystemTool();
-    private static ToolExecutionResultMessage processToolRequest(Map<String, Object> config, ToolExecutionRequest request) {
+    private static ToolExecutionResultMessage processToolRequest(Map<String, Object> config, ToolExecutionRequest request, List<ToolSpecification> tools) {
         Map<String, String> headers = new HashMap<>();
         if (config.containsKey("token")) {
             headers.put("Authorization", "Bearer " + config.get("token"));
         }
         HashMap args = Json.fromJson(request.arguments(), HashMap.class);
+
+        ToolSpecification tool = tools.stream().filter(t -> t.name().equals(request.name())).findFirst().orElse(null);
+        if (tool == null) {
+            LOG.info("refused to call unavailable tool: {}", request.name());
+            return ToolExecutionResultMessage.from(request, "Error: this tool is unavailable");
+        }
+
         LOG.info("processing tool request: {}", request.toString());
         try {
             if (request.name().equals("sendMessage")) {
@@ -574,6 +591,10 @@ public class App {
                 return ToolExecutionResultMessage.from(request, terminateChild);
             } else if (request.name().equals("setChildStatus")) {
                 return ToolExecutionResultMessage.from(request, systemTool.setChildStatus(args.get("arg0").toString()));
+            } else if (request.name().equals("panicButton")) {
+                LOG.error("PANIC BUTTON PRESSED");
+                systemTool.panic();
+                System.exit(0);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -654,7 +675,7 @@ public class App {
                     localHistory.add(chatResponse.aiMessage());
                     generated.add(chatResponse.aiMessage());
                     chatResponse.aiMessage().toolExecutionRequests().stream()
-                            .map(request -> processToolRequest(config, request))
+                            .map(request -> processToolRequest(config, request, tools))
                             .peek(generated::add)
                             .forEach(localHistory::add);
                 }

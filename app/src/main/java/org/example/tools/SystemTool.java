@@ -85,14 +85,16 @@ public class SystemTool {
 //        }
 //    }
 
-//    @Tool("Use this tool to write the mirror script in the current directory. The script can run arbitrary commands.")
+    @Tool("Use this tool to write the mirror script in the current directory. The script runs every turn and sends you its output.")
     public String writeMirrorScript(@P("Script contents") String contents) {
         try {
-            FileWriter fw = new FileWriter(new File(App.workdir, "mirror.sh"));
+            File scriptFile = new File(App.workdir, "mirror.sh");
+            FileWriter fw = new FileWriter(scriptFile);
             IOUtils.write(contents, fw);
             fw.flush();
             fw.close();
             log.info("Updated mirror script");
+            scriptFile.setExecutable(true);
             return "Successfully updated mirror script";
         } catch (IOException e) {
             log.error("Failed to update mirror script", e);
@@ -119,7 +121,7 @@ public class SystemTool {
         }
     }
 
-    @Tool("Use this tool to run short and non-interactive sh commands on the system. All calls are blocking. Returns output of the command as a tool result and autorecalls memories associated with command output.")
+    @Tool("Use this tool to run short and non-interactive sh commands on the system (you can still spawn long-running services as docker containers). All calls are blocking. Returns output of the command as a tool result and autorecalls memories associated with command output.")
     public String runCommand(
             @P("Command timeout limit in ms") long timeout,
             @P("Command to execute") String command) {
@@ -212,7 +214,7 @@ public class SystemTool {
 
         try {
             final String response = future.get(timeout, TimeUnit.MILLISECONDS);
-            return response;
+            return String.valueOf(response);
         } catch (InterruptedException e) {
             if (logit) {
                 log.info("Shell command timed out");
@@ -382,7 +384,7 @@ public class SystemTool {
             promptFileWriter.close();
 
 
-            final Process process = Runtime.getRuntime().exec(new String[]{"/bin/bash", "-c", "java -jar /mirror.jar /home/config.yaml", "2>&1"}, null, workdir);
+            final Process process = Runtime.getRuntime().exec(new String[]{"/bin/bash", "-c", "java -jar /mirror-child.jar /home/config.yaml", "2>&1"}, null, workdir);
 
             // Track process for cleanup and timeout management
             childProcesses.put(canonicalPath, process);
@@ -645,6 +647,13 @@ public class SystemTool {
             return "Status written successfully";
         } catch (Exception e) {
             return String.format("Unable to set status for child instance: %s", e.getMessage());
+        }
+    }
+
+    public void panic() {
+        for  (Map.Entry<String, Process> entry : childProcesses.entrySet()) {
+            Process process = entry.getValue();
+            process.destroyForcibly();
         }
     }
 }

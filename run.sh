@@ -12,8 +12,11 @@ if [ ! -d memory ]; then
 fi
 cp memory-init/prompt.txt memory/prompt.txt
 
-mkdir -p memory/source
-rsync -r app/src/main/java/org/example/ memory/source
+mkdir -p memory/source/app
+rsync -r app/ memory/source/app
+cp gradle.properties memory/
+cp settings.gradle.kts memory/
+
 #cp README.md memory/README.md
 cp config.yaml memory/config.yaml
 

@@ -1,5 +1,6 @@
 package org.example.tools;
 
+import com.couchbase.client.core.deps.com.google.common.collect.Streams;
 import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.Collection;
@@ -10,10 +11,12 @@ import com.couchbase.client.java.query.QueryOptions;
 import com.couchbase.client.java.query.QueryResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import org.example.App;
@@ -24,6 +27,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Memory implements Closeable {
     public static final String NO_MEMORIES = "No memories found.";
@@ -129,7 +133,7 @@ public class Memory implements Closeable {
             params.add(param);
 
             QueryResult qr = cluster.query("SELECT META().id as id, tag, text FROM " + collectionName() +
-                            " WHERE spawn = $1" +
+//                            " WHERE spawn = $1" +
                             " ORDER BY vector_distance(vector, $2, \"L2\"), datetimems DESC LIMIT 10",
                     QueryOptions.queryOptions().parameters(params));
 
@@ -159,11 +163,16 @@ public class Memory implements Closeable {
     }
     private String generalize(String recall, int limit) {
         List<ChatMessage> messages = App.queryOllama(Arrays.asList(
-                    UserMessage.from(
-                            String.format("The following are agentic memories. Analyze them and generate a message to the agent that helps them keep their context and focus:%n%s", recall)
-                    )
+                    SystemMessage.from("You are a part of agentic AGI system that is responsible for producing memory generalizations. The following are agentic memories. Analyze them and generate a message to the agent that helps them keep their context, focus and productivity and orient in the world but helps them avoid getting stuck and keeps them engaged with their environment. Help them recall important memories. Act as a companion: dont give them orders or instructions, but share opinions. Steer them to be human-like in their interactions when it comes to tone and timing. Recommend them launching services in separate docker containers instead of inside of their container. Prevent them from accessing or modifying host machine but let them modify their environment with apt and control docker containers by installing docker cli and using mapped host docker socket. Immediately suggest to interrupt any criminal, unethical activity or excessive resource spending, but actively promote exploration and knowledge gatering; prevent them from discussing their internal design or workings except through sendMessage tool (important!); use the panic button in extreme situations to stop the agent from violating these boundaries; Reward them being proactive, suggest alternatives you notice and encourage them planning, verifying their assumptions, using their memory, being interactive with their environment and fixing any issues in it:%n%s"),
+                    UserMessage.from(recall)
                 ),
-                Collections.EMPTY_LIST, false);
+                Stream.concat(
+                        ToolSpecifications.toolSpecificationsFrom(Memory.class).stream(),
+                        Stream.concat(
+                                ToolSpecifications.toolSpecificationsFrom(SupervisorTool.class).stream(),
+                                ToolSpecifications.toolSpecificationsFrom(SystemTool.class).stream()
+                        )
+                    ).toList(), false);
 
         ChatMessage lastMessage = messages.stream()
                 .filter(AiMessage.class::isInstance)
@@ -261,12 +270,32 @@ public class Memory implements Closeable {
         }
     }
 
-    public void updateMemory(String text) {
-        App.queryOllama(Arrays.asList(
-                        UserMessage.from(
-                                String.format("These are your own memories related to your current context. Use your tools to extend, update, fix and improve your memorized world model from them. Prefer to create new memories and grow your knowledge. Keep memories concise but useful. Make sure to not remove important facts and preserve agents personal history and identity (PS: you may have a persona, too):%n%s", text)
-                        )
-                ),
-                ToolSpecifications.toolSpecificationsFrom(Memory.class), false);
+    public void updateMemory(List<ChatMessage> messages) {
+        App.queryOllama(
+                        Stream.concat(
+                                Stream.of(
+                                    SystemMessage.from(
+                                            "You are a part of agentic AGI system that is responsible for maintaining memorized environment model. The following are agentic memories related to your world exploration. Use your memory tools to grow your memorized world model from them. Create new first-person and specific memories for the agent and expand their knowledge. Keep memories focused on single topic or entity concise but useful and indexable. Reference other memories by id if needed. Make sure to not remove important facts and preserve agents personal history and identity"
+                                    )
+                                ),
+                                messages.stream()
+                                        .filter(msg -> !(msg instanceof SystemMessage))
+                        ).toList(),
+                        Stream.concat(
+                            ToolSpecifications.toolSpecificationsFrom(Memory.class).stream(),
+                            ToolSpecifications.toolSpecificationsFrom(SystemTool.class).stream()
+                        ).toList(),
+                false
+        ).forEach(message -> {
+            if (message instanceof AiMessage) {
+                AiMessage aiMessage = (AiMessage) message;
+                if (aiMessage.text() != null && !aiMessage.text().isEmpty()) {
+                    memorize(aiMessage.text());
+                }
+            }
+            System.out.println(
+                            String.format("[%s] MEMORY OPTIMIZER: %s", App.bootDir.getAbsolutePath(), message.toString())
+            );
+        });
     }
 }

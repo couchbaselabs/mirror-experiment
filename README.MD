@@ -128,6 +128,9 @@ They also are the first to build a video pipeline to analyze googol meet video s
 And shown their ability to jump back into projects and upgrade them according to requirements:
 ![Ref describin developer's environment](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/ref-chatv4.png?raw=true)
 
+# Eon (Mar1)
+Eon is the first run that started improving its memory mechanisms - rewriting them in python to run local vectorization.
+
 
 ## Growth areas
 - performance depends on the model. ~~Qwen family of models shown the biggest potential, but I can't run models bigger than 20b. Suspect that bigger models would show better results.~~ `glm4.7-cloud` model has shown extraordiary results!
@@ -206,3 +209,6 @@ To start, Mirror expects a path to config yaml file (see `config.sample.yaml`) a
 
 # References
 https://arxiv.org/abs/2310.11511 — Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection
+
+
+If it quacks like a duck...

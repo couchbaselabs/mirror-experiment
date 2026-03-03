@@ -1,4 +1,4 @@
- > Can machines think?
+G > Can machines think?
 
 ![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/hass1.png?raw=true)
 ![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-1.png?raw=true)
@@ -213,6 +213,6 @@ To start, Mirror expects a path to config yaml file (see `config.sample.yaml`) a
 https://arxiv.org/abs/2310.11511 — Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection
 
 ---
-![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/meet-vision-memory.png?raw=true)
+![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/meet-vision-memory.png?raw=true)
 
 If it quacks like a duck...

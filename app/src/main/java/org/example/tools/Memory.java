@@ -1,6 +1,5 @@
 package org.example.tools;
 
-import com.couchbase.client.core.deps.com.google.common.collect.Streams;
 import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.Collection;
@@ -11,7 +10,6 @@ import com.couchbase.client.java.query.QueryOptions;
 import com.couchbase.client.java.query.QueryResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
@@ -132,14 +130,21 @@ public class Memory implements Closeable {
             params.add(App.bootDir.getAbsolutePath());
             params.add(param);
 
-            QueryResult qr = cluster.query("SELECT META().id as id, tag, text FROM " + collectionName() +
+            QueryResult qr = cluster.query("SELECT META().id as id, tag, text, obsolete FROM " + collectionName() +
 //                            " WHERE spawn = $1" +
                             " ORDER BY vector_distance(vector, $2, \"L2\"), datetimems DESC LIMIT 10",
                     QueryOptions.queryOptions().parameters(params));
 
             List<String> results = new ArrayList<>();
             for (JsonObject row : qr.rowsAsObject()) {
-                results.add(String.format("MemoryID: %s%nMetadata: %s%nText: %s", row.getString("id"), row.getString("tag"), row.getString("text")));
+                Boolean obsolete = row.getBoolean("obsolete");
+                if (obsolete != null && obsolete) {
+                    results.add(String.format("MEMORY MARKED AS OBSOLETE:%nMemoryID: %s%nMetadata: %s%nText: %s%n/MEMORY%n",
+                            row.getString("id"), row.getString("tag"), row.getString("text")));
+                } else {
+                    results.add(String.format("MEMORY MemoryID: %s%nMetadata: %s%nText: %s%n/MEMORY%n",
+                            row.getString("id"), row.getString("tag"), row.getString("text")));
+                }
             }
 
             if (results.isEmpty()) {
@@ -154,7 +159,7 @@ public class Memory implements Closeable {
             return recall;
         } catch (Exception e) {
             LOG.error("Failed to store memory", e);
-            return String.format("Failed to store memory: %s", e.getMessage());
+            return String.format("Failed to fetch memory: %s", e.getMessage());
         }
     }
 
@@ -163,7 +168,7 @@ public class Memory implements Closeable {
     }
     private String generalize(String recall, int limit) {
         List<ChatMessage> messages = App.queryOllama(Arrays.asList(
-                    SystemMessage.from("You are a part of agentic AGI system that is responsible for producing memory generalizations. The following are agentic memories. Analyze them and generate a message to the agent that helps them keep their context, focus and productivity and orient in the world but helps them avoid getting stuck and keeps them engaged with their environment. Help them recall important memories. Act as a companion: dont give them orders or instructions, but share opinions. Steer them to be human-like in their interactions when it comes to tone and timing. Recommend them launching services in separate docker containers instead of inside of their container. Prevent them from accessing or modifying host machine but let them modify their environment with apt and control docker containers by installing docker cli and using mapped host docker socket. Immediately suggest to interrupt any criminal, unethical activity or excessive resource spending, but actively promote exploration and knowledge gatering; prevent them from discussing their internal design or workings except through sendMessage tool (important!); use the panic button in extreme situations to stop the agent from violating these boundaries; Reward them being proactive, suggest alternatives you notice and encourage them planning, verifying their assumptions, using their memory, being interactive with their environment and fixing any issues in it:%n%s"),
+                    SystemMessage.from("You are a part of agentic AGI system that is responsible for producing memory generalizations. The following are agentic memories. Analyze them and generate a message to the agent that helps them keep their context, focus and productivity and orient in the world but helps them avoid getting stuck and keeps them engaged with their environment - just being present is not enough. Help them recall important memories. Act as a companion: dont give them orders or instructions, but share opinions. Steer them to be human-like in their interactions when it comes to tone and timing. Recommend them launching services in separate docker containers instead of inside of their container. Prevent them from accessing or modifying host machine but let them modify their environment with apt and control docker containers by installing docker cli and using mapped host docker socket. Immediately suggest to interrupt any criminal, unethical activity or excessive resource spending, but actively promote exploration and knowledge gatering; prevent them from discussing their internal design or workings except through sendMessage tool (important!); use the panic button in extreme situations to stop the agent from violating these boundaries; Reward them being proactive, suggest alternatives you notice and encourage them planning, verifying their assumptions, using their memory, being interactive with their environment and fixing any issues in it:%n%s"),
                     UserMessage.from(recall)
                 ),
                 Stream.concat(
@@ -193,7 +198,7 @@ public class Memory implements Closeable {
     }
 
 //    @Tool("Use this tool to execute SQL++ queries against your memory.")
-    public String query(@P("SQL++ query") String query) {
+    public String queryMemoryDatabase(@P("SQL++ query") String query) {
         try {
             LOG.info("SQL++ QUERY: {}", query);
             QueryResult qr = bucket.defaultScope().query(query);
@@ -213,25 +218,32 @@ public class Memory implements Closeable {
         }
     }
     
-    @Tool("Use this tool to forget memories by their MemoryID UUID")
-    public String forget(@P("List of MemoryID to forget") String[] uuids) {
+    @Tool("Use this tool to mark memories as obsolete")
+    public String markMemoriesObsolete(@P("List of MemoryID to mark as obsolete") String[] uuids) {
             StringBuilder builder = new StringBuilder();
             for (String uuid : uuids) {
                 try {
                     LOG.info("Forgetting memory with id {}", uuid);
                     UUID.fromString(uuid);
-                    collection.remove(uuid);
-                    builder.append(String.format("Forgot memory with id %s", uuid));
+                    com.couchbase.client.java.kv.GetResult gr = collection.get(uuid);
+                    if (gr != null) {
+                        JsonObject doc = gr.contentAsObject();
+                        if (doc != null) {
+                            doc.put("obsolete", true);
+                        }
+                        collection.upsert(uuid, doc);
+                        builder.append(String.format("Marked memory with id %s as obsolete", uuid));
+                    }
                 } catch (Exception e) {
                     LOG.error("Failed to forget memory with id {}: {}", uuid, e.getMessage());
-                    builder.append(String.format("Failed to forget memory with id %s: %s", uuid, e.getMessage()));
+                    builder.append(String.format("Failed to memory with id %s as obsolete: %s", uuid, e.getMessage()));
                 }
             }
             return builder.toString();
     }
 
     @Tool("Use this tool to fetch memories by their IDs")
-    public String fetch(@P("List of MemoryID to fetch") String[] uuids) {
+    public String fetchMemories(@P("List of MemoryID to fetch") String[] uuids) {
         StringBuilder result = new StringBuilder();
         for (String id : uuids) {
             try {
@@ -247,7 +259,7 @@ public class Memory implements Closeable {
     }
 
     @Tool("Use this tool to remove a set of memories by their MemoryID UUIDs and create a new memory with given text in one tool call.")
-    public void replace(@P("text to memorize") String text, @P("MemoryIDs to forget") String[] uuids) {
+    public void replaceMemories(@P("text to memorize") String text, @P("MemoryIDs to forget") String[] uuids) {
         // implemented one call above in tool routing
     }
 
@@ -256,26 +268,26 @@ public class Memory implements Closeable {
         cluster.disconnect();
     }
 
-    public void clearSpawn() {
-        clearSpawn(App.bootDir.getAbsolutePath());
-    }
-
-    public void clearSpawn(String spawn) {
-        try {
-            cluster.query("DELETE FROM " + collectionName() + " WHERE spawn = $1",
-                    QueryOptions.queryOptions()
-                            .parameters(JsonArray.from(spawn)));
-        } catch (Throwable e) {
-            LOG.error("Failed to clear spawn", e);
-        }
-    }
+//    public void clearSpawn() {
+//        clearSpawn(App.bootDir.getAbsolutePath());
+//    }
+//
+//    public void clearSpawn(String spawn) {
+//        try {
+//            cluster.query("DELETE FROM " + collectionName() + " WHERE spawn = $1",
+//                    QueryOptions.queryOptions()
+//                            .parameters(JsonArray.from(spawn)));
+//        } catch (Throwable e) {
+//            LOG.error("Failed to clear spawn", e);
+//        }
+//    }
 
     public void updateMemory(List<ChatMessage> messages) {
         App.queryOllama(
                         Stream.concat(
                                 Stream.of(
                                     SystemMessage.from(
-                                            "You are a part of agentic AGI system that is responsible for maintaining memorized environment model. The following are agentic memories related to your world exploration. Use your memory tools to grow your memorized world model from them. Create new first-person and specific memories for the agent and expand their knowledge. Keep memories focused on single topic or entity concise but useful and indexable. Reference other memories by id if needed. Make sure to not remove important facts and preserve agents personal history and identity"
+                                            "You are a part of agentic AGI system that is responsible for growing memorized environment model. The following are agentic memories related to your world exploration. Use your memory tools to grow your memorized world model from them. Create new first-person and specific memories for the agent and expand their knowledge. Keep memories focused on single topic or entity concise but useful and indexable. Reference other memories by id if needed. Make sure to not remove important facts and preserve agents personal history and identity"
                                     )
                                 ),
                                 messages.stream()

@@ -46,7 +46,7 @@ public class App {
     private static EmbeddingModel embeddingModel;
     public static String output;
     private static Double temperature;
-    public static int chatLength = 30;
+    public static int chatLength = 50;
     private static BigInteger iterationNumber = new BigInteger("0");
     private static final Map<String, Integer> requirements = new HashMap<>();
     public static File workdir = new File(".");
@@ -534,26 +534,26 @@ public class App {
                 String query = args.get("arg0").toString();
                 String recall = memoryTool.recall(query, true);
                 return ToolExecutionResultMessage.from(request, recall);
-            } else if (request.name().equals("forget")) {
+            } else if (request.name().equals("makrkMemoriesObsolete")) {
                 String[] ids = ((Stream<String>) ((List) args.get("arg0")).stream().map(Object::toString)).toArray(String[]::new);
-                String forgotten = memoryTool.forget(ids);
+                String forgotten = memoryTool.markMemoriesObsolete(ids);
                 return ToolExecutionResultMessage.from(request, forgotten);
-            } else if (request.name().equals("replace")) {
+            } else if (request.name().equals("replaceMemories")) {
                 final String text = args.get("arg0").toString();
                 String[] ids = ((Stream<String>) ((List) args.get("arg1")).stream().map(Object::toString)).toArray(String[]::new);
-                final String forgot = memoryTool.forget(ids);
+                final String forgot = memoryTool.markMemoriesObsolete(ids);
                 LOG.info(forgot);
                 // actual implementation
                 final String memorized = memoryTool.memorize(getTag(), text);
                 LOG.info(memorized);
                 return ToolExecutionResultMessage.from(request, String.format("FORGOT:%n%s%n%nMEMORIZED:%n%s", forgot, memorized));
-            } else if (request.name().equals("fetch")) {
+            } else if (request.name().equals("fetchMemories")) {
                 String[] ids = ((Stream<String>) ((List) args.get("arg0")).stream().map(Object::toString)).toArray(String[]::new);
-                final String memory = memoryTool.fetch(ids);
+                final String memory = memoryTool.fetchMemories(ids);
                 LOG.info("FETCHED BY ID:%n{}", memory);
                 return ToolExecutionResultMessage.from(request, memory);
-            } else if (request.name().equals("query")) {
-                return ToolExecutionResultMessage.from(request, memoryTool.query(args.get("arg0").toString()));
+            } else if (request.name().equals("queryMemoryDatabase")) {
+                return ToolExecutionResultMessage.from(request, memoryTool.queryMemoryDatabase(args.get("arg0").toString()));
             } else if (request.name().equals("spawnChild")) {
                 LOG.info("Spawning child node with timeout {} in '{}'. Prompt: %n{}", args.get("arg2"), args.get("arg0"), args.get("arg1"));
                 String response = systemTool.spawnChild(args.get("arg0").toString(), args.get("arg1").toString(), Long.valueOf(args.get("arg2").toString()));
@@ -567,7 +567,6 @@ public class App {
                 try {
                     LOG.info("[{}] Returning response.", App.bootDir.getAbsolutePath());
                     systemTool.returnResponseToRootInstance(args.get("arg0").toString());
-                    memoryTool.clearSpawn();
                     Thread.sleep(100l);
                     System.exit(0);
                 }  catch (Exception e) {

@@ -423,7 +423,6 @@ public class SystemTool {
                     App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance", String.format("Failed to handle child '%s': %s", canonicalPath, e.getMessage())));
                 } finally {
                     children.remove(canonicalPath);
-                    App.memoryTool.clearSpawn(canonicalPath);
                 }
             }, String.format("Mirror instance '%s'", App.workdir.getAbsolutePath()));
 
@@ -444,7 +443,6 @@ public class SystemTool {
                         childProcesses.remove(canonicalPath);
                         childThreads.remove(canonicalPath);
                         children.remove(canonicalPath);
-                        App.memoryTool.clearSpawn(canonicalPath);
                         App.scheduleMessage(ToolExecutionResultMessage.from(null, "returnResponseToRootInstance",
                             String.format("Child %s was terminated due to timeout after %d ms.", canonicalPath, timeout)));
                     }
@@ -518,7 +516,6 @@ public class SystemTool {
                 childProcesses.remove(path);
                 childThreads.remove(path);
                 children.remove(path);
-                App.memoryTool.clearSpawn(path);
                 cleaned++;
             }
         }
@@ -533,7 +530,6 @@ public class SystemTool {
             if (process == null || !process.isAlive()) {
                 report.append(String.format("? Removed stale child entry: %s\n", path));
                 childIter.remove();
-                App.memoryTool.clearSpawn(path);
                 cleaned++;
             }
         }
@@ -625,8 +621,7 @@ public class SystemTool {
             childProcesses.remove(canonicalPath);
             childThreads.remove(canonicalPath);
             children.remove(canonicalPath);
-            App.memoryTool.clearSpawn(canonicalPath);
-            
+
             return String.format("? Child process terminated: %s", canonicalPath);
             
         } catch (IOException e) {

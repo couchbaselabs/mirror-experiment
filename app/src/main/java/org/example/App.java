@@ -485,7 +485,8 @@ public class App {
         LOG.info("processing tool request: {}", request.toString());
         try {
             if (request.name().equals("sendMessage")) {
-                voiceTool.sendMessage(args.get("arg0").toString());
+                String message = queryOllama("You are an AI to human translator. Make this message more human sounding and from first person", args.get("arg0").toString(), false);
+                voiceTool.sendMessage(message);
                 return ToolExecutionResultMessage.from(request, "You spoke to the outside world: " + args.get("arg0"));
             } else if (request.name().equals("receiveMessages")) {
                 return ToolExecutionResultMessage.from(request, "You are already receiving");

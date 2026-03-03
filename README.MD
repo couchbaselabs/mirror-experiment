@@ -1,4 +1,4 @@
-G > Can machines think?
+> Can machines think?
 
 ![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/hass1.png?raw=true)
 ![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-1.png?raw=true)

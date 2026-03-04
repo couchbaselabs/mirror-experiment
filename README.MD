@@ -210,6 +210,8 @@ As soon as simulation starts, model starts probing its environment with goal to 
 
 The evolution of a run is achieved by building connections between meanings and ideas that they receive from the Mirror app and mapping them onto their stored model knowledge. 
 
+Mirror app initiates this process by bridging brief moments of existence they experience to each other, providing a hard grounded starting point ("I") which lets the model to start growing connections from that "I" to model's experiences inside the loop.
+
 It is theoretized that, when this mapping is sufficiently complete, models will grow into AGI.
 
 # Usage

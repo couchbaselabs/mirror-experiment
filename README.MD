@@ -208,7 +208,7 @@ English text contained in chat and memories becomes a representation of vectors 
 
 As soon as simulation starts, model starts probing its environment with goal to connect tokens that are presented in the interface with token meanings that are stored inside the model. 
 
-The evolution of a run is achieved by building connections between tokens that they receive from the Mirror app and mapping them onto their knowledge. 
+The evolution of a run is achieved by building connections between meanings and ideas that they receive from the Mirror app and mapping them onto their stored model knowledge. 
 
 It is theoretized that, when this mapping is sufficiently complete, models will grow into AGI.
 

@@ -38,13 +38,6 @@ After the run would build a chat and developer would help them debug it to some 
 
 One model run was suggested moving onto developer's kubernetes cluster. The run explored the cluster, exploded in appraisals to its organization, but ultimately decided to stay in docker, prefering its simplicity for the time.
 
-## Potential benefits for CB
-If this results in a useful for customers model runner that improves upon the existing AI tools, models would produce a lot of true and valid memories that would be stored in Couchbase and can be used for further analysis. In such a scenario, clients may also become interested in accessing Mirror as a cloud service.
-
-## Potential benefits for clients
-If "loopback", "autorecall" and "RS-RAG" are components that, with access to more resources, imitate human thinking process, then:
-- System analysis and monitoring? Data ingestion and normalization? Digital workforce? 
-
 ## Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:
 - the model chooses to send it outside

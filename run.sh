@@ -23,5 +23,5 @@ cp config.yaml memory/config.yaml
 echo "Build number: T-$(cat memory-init/build.txt)" > memory/build.txt
 
 
-docker run -v /var/run/docker.sock:/var/run/docker.sock --name mirror -v ./memory:/home mirror
+docker run -v /var/run/docker.sock:/var/run/docker.sock --name mirror -v ./memory:/home -p 8080:8080 mirror
 #| tee "$(tty)" | ./mqtt_stream 192.168.x.x 1883 agatha_stream

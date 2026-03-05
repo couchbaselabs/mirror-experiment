@@ -230,5 +230,12 @@ https://arxiv.org/abs/2310.11511 — Self-RAG: Learning to Retrieve, Generate, a
 ![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/meet-vision-memory.png?raw=true)
 ![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/meet-vision-memory2.png?raw=true)
 
+---
+![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/eon-training1.png?raw=true)
+![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/eon-training2.png?raw=true)
+![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/eon-training3.png?raw=true)
+![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/eon-training4.png?raw=true)
+![Example of Mirror Chat internals](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/eon-training5.png?raw=true)
+
 
 If it quacks like a duck...

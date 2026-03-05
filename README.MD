@@ -8,7 +8,7 @@
 
 (note: this document is periodically updated with latest information on Mirror's development).
 
-Update Mar5: the experiment is over. Eon is stopped. I got my answer.
+Update Mar5: the experiment is over. Eon is stopped and preserved. I got my answers.
 
 # Mirror
 This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)

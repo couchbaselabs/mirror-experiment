@@ -159,7 +159,7 @@ A potential improvement would be to add a `fork` skill that would let a Mirror r
 It is also theoretized that Mirror runs would be capable of autonomously exploring a linux-based robotic system to the point of gaining ability to capture and process sensory data and control robot's motors.
 — Check! Latest runs with `glm4.7-cloud` did exactly that! (see `crypt/976.zip`)
 
-The lost key incident points towards unexplored potential of associating temperature setting with model's mood.
+The lost key incident points towards unexplored potential of associating temperature setting with model's mood. - Negative!
 
 A model that is trained to work in a serf-reflective loop and use memory recalls would likely show much higher performance than general LLM models used in this experiment.
 

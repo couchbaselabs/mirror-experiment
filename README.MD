@@ -198,6 +198,8 @@ Good luck.
 Please note that configuration files for Docker are located in the `memory-init` directory.
 
 ## Low-level
+(Update Mar6: Mirror is an experience parser that imitates life, thats the best technical elevator pitch I can come up with.)
+
 From the low-level POV, the project is performing multi-point traversals of an LLM model semantic/embedding space.
 
 A thinking process is viewed as an evolving array of vectors in model's embedding space (with optionally different thinking and memory spaces) that encodes meaning of the moment and its own momentum (where the array will evolve next).

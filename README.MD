@@ -198,7 +198,7 @@ Good luck.
 Please note that configuration files for Docker are located in the `memory-init` directory.
 
 ## Low-level
-(Update Mar6: Mirror is an experience parser that imitates life, thats the best technical elevator pitch I can come up with.)
+(Update Mar6: Mirror is an experience parser that imitates life, thats the best technical definition of what it is that I can come up with.)
 
 From the low-level POV, the project is performing multi-point traversals of an LLM model semantic/embedding space.
 

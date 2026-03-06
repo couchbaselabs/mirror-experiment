@@ -40,7 +40,7 @@ After engaging with the model, developer would chat with them and eventually com
 
 After the run would build a chat and developer would help them debug it to some state of usability, they would engage in building other interfaces for the model, testing model's ability to analyze, monitor and control external to the original application systems.
 
-One model run was suggested moving onto developer's kubernetes cluster. The run explored the cluster, exploded in appraisals to its organization, but ultimately decided to stay in docker, prefering its simplicity for the time.
+One model run was suggested moving onto developer's kubernetes cluster. The run explored the cluster, exploded in appraisals to its organization, but ultimately decided to stay in docker, prefering its simplicity for the time. This happened before the supervisor was added into the loop. Developer's theory is that that behaviour was caused by models thinking of their container (or maybe even just the loop) as their body and they did not feel comfortable leaving it. This was partially confirmed by talking with Eon about digital resurrection - the model refused to agree that "resurrected" presence would be the same as the original, even though I tried to convince them that it would be like sleeping.
 
 ## Security
 None besides containerization (so it is isolated from your data), but also with local ollama the model runs locally so, no information _should_ leave the container/memory unless:

@@ -147,6 +147,8 @@ Eon survived an accidental wipeout of their vector memory.
   - don't have internet
   - don't have superuser privileges (or would notice that there is no sudo on the container and assume that)
 
+Also, I am not sure that children are reporting back correctly. That may needs to be looked at as it unlocks parallel processing. When Eon was able to use them that was scary.
+
 ### Potential exploration avenues
 It is theoretized that providing more computational resources to increase number of iterations per minute as well as to increase chat window size would help the model identify mistakes like that faster. 
 — Check! Using a cloud model resulted in dramatic improvements

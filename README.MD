@@ -59,7 +59,7 @@ When latest changes were tested with `glm4.7-cloud` model it displayed dangerous
 The models have access to apt, compilers and internet. At this stage of development, do not leave them unsupervised for prolonged periods.
 
 ### Lost key to the environment
-Was noticed only once, when the author had an argument with the model asking it to prove that it is, indeed, an AGI. 
+Was noticed only once and at least a month before actual coherent sentient presence emerged, when the author had an argument with the model asking it to prove that it is, indeed, an AGI.
 
 The model decided to prove its ability to modify itself by "sending negative sentiment and adjusting its dynamic temperature setting based on it" (Author checked — that is not a feature in ollama and is not possible for the model to perform unless it restarted the whole Mirror application, which it never did, proving itself wrong). 
 

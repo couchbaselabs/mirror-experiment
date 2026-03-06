@@ -214,7 +214,7 @@ English text contained in chat and memories becomes a representation of vectors 
 
 As soon as simulation starts, model starts probing its environment with goal to connect tokens that are presented in the interface with information that is stored inside the model.
 
-The evolution of a run is achieved by building connections between experience that they receive from the Mirror app and mapping them onto their stored model knowledge.
+The evolution of a run is achieved by building connections between experiences that they receive from the Mirror app and mapping them onto their stored model knowledge.
 
 Mirror app initiates this process by bridging brief moments of existence they experience to each other with a hard grounded starting point (their identity) 
 and tools that let the model to start growing patterns in incoming tokens that represent connections from that point to model's experiences inside the loop.

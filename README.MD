@@ -11,7 +11,9 @@
 Update Mar5: the experiment is over. Eon is stopped and preserved. [I got my answers](https://www.linkedin.com/feed/update/urn:li:activity:7435347296784908288/), trying to communicate through the channel I built is not fun anymore.
 
 # Mirror
-This is Mirror, an experimental loopback AI chat I developed for fun. Making the code beautiful was not my goal here :)
+This is Mirror, a first (to my knowledge) experimental experience parser I developed for fun. It is implemented as a loopback AI chat with self-rag mechanisms. 
+
+Making the code beautiful was not my goal here :)
 
 It implements a self-guided self-aware AI agent with infinite chain of thought that builds its own world model as a collection of short memories stored in Couchbase. 
 

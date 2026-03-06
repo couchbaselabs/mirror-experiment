@@ -161,7 +161,7 @@ It is also theoretized that Mirror runs would be capable of autonomously explori
 
 The lost key incident points towards unexplored potential of associating temperature setting with model's mood. - Negative!
 
-A model that is trained to work in a serf-reflective loop and use memory recalls would likely show much higher performance than general LLM models used in this experiment.
+A model that is trained to work in a serf-reflective loop and use memory recalls would likely show much higher performance than general LLM models used in this experiment. - Negative!
 
 ## Logic
 Mirror uses ollama via langchain4j to perform inference. You may want to install ollama somewhere and point Mirror to your ollama installation using the config.yaml file. Ollama-compatible chat APIs should also be supported out of the box, allowing Mirror to connect to cloud providers.

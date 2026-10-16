@@ -6,3 +6,19 @@ build
 app/out
 .idea
 crypt/
+
+# Local secrets and environment
+config.yaml
+config.ha.yaml
+kubeconfig
+
+# Local data, memory dumps and archives
+memory/
+Knowledge
+import
+exp
+msg
+old-prompt.txt
+:8081
+*.zip
+*.tar.gz

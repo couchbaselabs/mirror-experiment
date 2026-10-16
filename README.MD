@@ -1,6 +1,6 @@
 > Can machines think? 
 
-Yes, they can. [Just not with LLMs](https://github.com/couchbaselabs/cortex-experiment).
+Yes, they can. [Just not with LLMs](https://github.com/chedim/membrane).
 
 ![Example of integrating with hass](https://github.com/couchbaselabs/mirror-experiment/blob/main/images/hass1.png?raw=true)
 ![Example of generated MQTT messages](https://github.com/couchbaselabs/mirror-experiment/blob/main/979-mqttchat-1.png?raw=true)
